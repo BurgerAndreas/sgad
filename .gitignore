@@ -19,3 +19,4 @@ venv/
 Thumbs.db
 # Ignore images
 *.png
+!assets/*

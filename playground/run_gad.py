@@ -29,6 +29,8 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from playground.example_hip import EquiformerTorchCalculator
 from hip.frequency_analysis import analyze_frequencies_torch
 from sgad.utils.graph_utils import coord_atoms_to_torch_geometric
+from sgad.optimizer import Geometry, NaiveSteepestDescent, SteepestDescent, FIRE, BFGS
+from sgad.rfo import RFO
 
 
 def parse_args():
@@ -95,6 +97,13 @@ def parse_args():
         "--eckartgad",
         action="store_true",
         help="Project GAD into vibrational subspace (Eckart)",
+    )
+    parser.add_argument(
+        "--opt",
+        type=str,
+        default="sd",
+        choices=["nsd", "sd", "fire", "bfgs", "rfo"],
+        help="Optimizer to follow GAD: nsd, sd, fire, bfgs (default: nsd)",
     )
     return parser.parse_args()
 
@@ -189,6 +198,82 @@ def euler_integration_gad(
             )
 
     return current_pos, trajectory, energies, gad_magnitudes
+
+
+class GadCalculatorAdapter:
+    """Adapter exposing predict(coords, atomic_nums) that returns GAD as 'forces'."""
+
+    def __init__(self, inner, device, eckart=False, eckartgad=False):
+        self.inner = inner
+        self.device = device
+        self.eckart = eckart
+        self.eckartgad = eckartgad
+
+    def predict(self, coords, atomic_nums, do_hessian=False):
+        # coords, atomic_nums may be numpy arrays or tensors
+        if isinstance(coords, torch.Tensor):
+            pos = coords.detach().cpu().to(dtype=torch.float32)
+        else:
+            pos = torch.as_tensor(coords, dtype=torch.float32)
+        if isinstance(atomic_nums, torch.Tensor):
+            an = atomic_nums.detach().cpu().to(dtype=torch.long)
+        else:
+            an = torch.as_tensor(atomic_nums, dtype=torch.long)
+
+        batch = coord_atoms_to_torch_geometric(pos, an).to(self.device)
+        results = self.inner.get_gad(batch, eckart=self.eckart, eckartgad=self.eckartgad)
+        gad = results["gad"]
+        if isinstance(gad, torch.Tensor):
+            forces = gad.detach().cpu()
+        else:
+            forces = torch.as_tensor(gad)
+        # reshape to (N, 3)
+        n_atoms = pos.reshape(-1, 3).shape[0]
+        forces = forces.reshape(n_atoms, 3)
+        return {"energy": results["energy"], "forces": forces}
+
+
+def optimize_with_optimizer(
+    calculator,
+    initial_batch,
+    nsteps,
+    device,
+    eckart,
+    eckartgad,
+    opt_name,
+):
+    """Run an optimizer treating GAD as forces; return final_pos, trajectory, energies, gad_magnitudes."""
+    adapter = GadCalculatorAdapter(calculator, device, eckart=eckart, eckartgad=eckartgad)
+
+    coords0 = initial_batch.pos.detach().cpu().numpy().reshape(-1, 3)
+    atomic_nums = initial_batch.atomic_numbers.detach().cpu().numpy()
+    geom = Geometry(coords=coords0, atomic_nums=atomic_nums, calc=adapter)
+
+    opt_map = {
+        "nsd": NaiveSteepestDescent,
+        "sd": SteepestDescent,
+        "fire": FIRE,
+        "bfgs": BFGS,
+        "rfo": RFO,
+    }
+    OptCls = opt_map[opt_name]
+    optimizer = OptCls(geom, max_cycles=nsteps, thresh="never")
+    optimizer.run()
+
+    # Collect outputs similar to Euler integrator
+    trajectory = [c.reshape(-1, 3) for c in optimizer.cart_coords]
+    # Ensure final coordinate included
+    if not trajectory or (trajectory[-1] is not geom.coords.reshape(-1, 3)):
+        trajectory.append(geom.coords.reshape(-1, 3))
+
+    energies = optimizer.energies
+    gad_magnitudes = []
+    for f in optimizer.forces:
+        f_arr = torch.as_tensor(f).reshape(-1)
+        gad_magnitudes.append(float(torch.linalg.norm(f_arr)))
+
+    final_pos = torch.as_tensor(geom.coords.reshape(-1, 3), dtype=torch.float32)
+    return final_pos, trajectory, energies, gad_magnitudes
 
 
 def analyze_final_state(calculator, final_pos, atomic_numbers, device):
@@ -454,17 +539,15 @@ def main():
         initial_batch = convert_t1x_to_torch_geo(start_data, calculator, device)
         print(f"Number of atoms: {initial_batch.pos.shape[0]}")
 
-        # Perform GAD integration
-        final_pos, trajectory, energies, gad_magnitudes = euler_integration_gad(
+        # Perform GAD-guided optimization using selected optimizer
+        final_pos, trajectory, energies, gad_magnitudes = optimize_with_optimizer(
             calculator,
             initial_batch,
-            initial_batch.atomic_numbers,
             args.nsteps,
-            args.dt,
             device,
-            args.tresh,
             args.eckart,
             args.eckartgad,
+            args.opt,
         )
 
         # Analyze final state

@@ -26,7 +26,7 @@ class Geometry:
             atomic_nums: Atomic numbers as numpy array or torch tensor, shape (N,)
             calc: Calculator object with predict() method (e.g., EquiformerTorchCalculator)
         """
-        self._coords = coords
+        self._coords = coords.reshape(-1)
         self.atomic_nums = atomic_nums
         self.calc = calc
         self.N = len(atomic_nums)
@@ -40,7 +40,7 @@ class Geometry:
 
     @coords.setter
     def coords(self, coords):
-        self._coords = coords
+        self._coords = coords.reshape(-1)
         self.coords_changed = True
 
     @property
@@ -224,11 +224,8 @@ class Optimizer(metaclass=abc.ABCMeta):
         rms_force_only: bool = False,
         max_force_only: bool = False,
         force_only: bool = False,
-        print_every: int = 1,
+        print_every: int = 100,
         prefix: str = "",
-        reparam_thresh: float = 1e-3 / ANGSTROM_TO_AU,  # 1e-3 Bohr -> Angstrom
-        reparam_check_rms: bool = True,
-        reparam_when: Optional[Literal["before", "after"]] = "after",
         overachieve_factor: float = 0.0,
         check_eigval_structure: bool = False,
         restart_info=None,
@@ -272,15 +269,6 @@ class Optimizer(metaclass=abc.ABCMeta):
             Short string that is prepended to several files created by
             the optimizer. Allows distinguishing several optimizations carried
             out in the same directory.
-        reparam_thresh
-            Controls the minimal allowed similarity between coordinates in Angstrom
-            after two successive reparametrizations. Convergence is signalled
-            if the coordinates did not change significantly.
-        reparam_check_rms
-            Whether to check for (too) similar coordinates after reparametrization.
-        reparam_when
-            Reparametrize before or after calculating the step. Can also be turned
-            off by setting it to None.
         overachieve_factor
             Signal convergence when max(forces) and rms(forces) fall below the
             chosen threshold, divided by this factor. Convergence of max(step) and
@@ -321,10 +309,6 @@ class Optimizer(metaclass=abc.ABCMeta):
         assert print_every >= 1
         self.print_every = print_every
         self.prefix = f"{prefix}_" if prefix else prefix
-        self.reparam_thresh = reparam_thresh
-        self.reparam_check_rms = reparam_check_rms
-        self.reparam_when = reparam_when
-        assert self.reparam_when in ("after", "before", None)
         self.overachieve_factor = float(overachieve_factor)
         self.check_eigval_structure = check_eigval_structure
         self.check_coord_diffs = check_coord_diffs
@@ -698,14 +682,9 @@ class Optimizer(metaclass=abc.ABCMeta):
         return textwrap.dedent(final_summary.strip())
 
     def run(self):
-        print("If not specified otherwise, all quantities are given in au.\n")
-
         if not self.restarted:
-            prep_start_time = time.time()
             self.prepare_opt()
             # self.log(f"{self.geometry.coords.size} degrees of freedom.")
-            prep_end_time = time.time()
-            prep_time = prep_end_time - prep_start_time
             # self.report_conv_thresholds()
             # print(f"{self.__class__.__name__} Spent {prep_time:.1f} s preparing the first cycle.")
 
@@ -732,13 +711,6 @@ class Optimizer(metaclass=abc.ABCMeta):
             if reset_flag:
                 self.reset()
 
-            # Coordinates may be updated here.
-            if self.reparam_when == "before" and hasattr(
-                self.geometry, "reparametrize"
-            ):
-                # This call actually returns a bool, but right now we just drop it.
-                self.geometry.reparametrize()
-
             self.coords.append(self.geometry.coords.copy())
             self.cart_coords.append(self.geometry.cart_coords.copy())
 
@@ -758,7 +730,7 @@ class Optimizer(metaclass=abc.ABCMeta):
             step = self.optimize()
             step_norm = np.linalg.norm(step)
             if self.cur_cycle % self.print_every == 0 and self.cur_cycle > 0:
-                self.log(f"norm(step)={step_norm:.6f} au (rad)")
+                self.log(f"norm(step)={step_norm:.6f} Ang (rad)")
             for source, target in (
                 ("true_energy", "true_energies"),
                 ("true_forces", "true_forces"),
@@ -799,12 +771,11 @@ class Optimizer(metaclass=abc.ABCMeta):
                 break
             # Allow convergence, before checking for too small steps
             elif self.assert_min_step and (step_norm <= self.min_step_norm):
-                raise ValueError(
-                    f"Step norm is too small: {step_norm} <= {self.min_step_norm}"
-                )
+                print(f"Step norm is too small: {step_norm:.2e} <= {self.min_step_norm:.2e}")
+                break
 
             # Update coordinates
-            new_coords = self.geometry.coords.copy() + step
+            new_coords = self.geometry.coords.copy() + step.reshape(-1)
             self.geometry.coords = new_coords
             # Use the actual step. It may differ from the proposed step
             # when internal coordinates are used, as the internal-Cartesian
@@ -1378,9 +1349,6 @@ class SteepestDescent(Optimizer):
         pass
 
     def optimize(self):
-        if self.is_cos and self.align:
-            self.procrustes()
-
         self.forces.append(self.geometry.forces)
         self.energies.append(self.geometry.energy)
 
@@ -1433,9 +1401,9 @@ class SteepestDescent(Optimizer):
         # and hence smaller than epsilon, which is a positive number.
 
         # We went uphill, slow alpha
-        self.log(f"Backtracking: rms_diff = {rms_diff:.03f}")
+        # self.log(f"Backtracking: rms_diff = {rms_diff:.03f}")
         if rms_diff > epsilon:
-            self.log(f"Scaling alpha with {self.scale_factor:.03f}")
+            # self.log(f"Scaling alpha with {self.scale_factor:.03f}")
             # self.alpha = max(self.alpha0*.5, self.alpha*self.scale_factor)
             self.alpha *= self.scale_factor
             skip = True
@@ -1450,35 +1418,35 @@ class SteepestDescent(Optimizer):
                     # Reset alpha
                     self.alpha = self.alpha0
                     skip = True
-                    self.log(f"Reset alpha to alpha0 = {self.alpha0:.4f}")
+                    # self.log(f"Reset alpha to alpha0 = {self.alpha0:.4f}")
                 else:
                     # Accelerate alpha
                     self.alpha /= self.scale_factor
-                    self.log(f"Scaled alpha to {self.alpha:.4f}")
+                    # self.log(f"Scaled alpha to {self.alpha:.4f}")
 
         # Avoid huge alphas
         if self.alpha > self.alpha_max:
             self.alpha = self.alpha_max
-            self.log(
-                "Didn't accelerate as alpha would become too large. "
-                f"keeping it at {self.alpha}."
-            )
+            # self.log(
+            #     "Didn't accelerate as alpha would become too large. "
+            #     f"keeping it at {self.alpha}."
+            # )
 
         # Don't skip if we already skipped the previous iterations to
         # avoid infinite skipping.
         if (len(self.skip_log) >= self.dont_skip_after) and all(
             self.skip_log[-self.dont_skip_after :]
         ):
-            self.log(
-                f"already skipped last {self.dont_skip_after} "
-                "iterations don't skip now."
-            )
+            # self.log(
+            #     f"already skipped last {self.dont_skip_after} "
+            #     "iterations don't skip now."
+            # )
             skip = False
             if self.alpha > self.alpha0:
                 self.alpha = self.alpha0
-                self.log("Resetted alpha to alpha0.")
+                # self.log("Resetted alpha to alpha0.")
         self.skip_log.append(skip)
-        self.log(f"alpha = {self.alpha:.4f}, skip = {skip}")
+        # self.log(f"alpha = {self.alpha:.4f}, skip = {skip}")
 
         return skip
 
