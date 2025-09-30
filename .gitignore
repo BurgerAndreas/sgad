@@ -17,3 +17,5 @@ venv/
 # OS generated
 .DS_Store
 Thumbs.db
+# Ignore images
+*.png
