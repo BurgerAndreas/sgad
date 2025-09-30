@@ -1,0 +1,4 @@
+_target_: sgad.components.noise_schedule.GeometricTorsionNoiseSchedule
+sigma_min: 0.03141592653
+sigma_max: 3.14159265359
+ntiles: 6

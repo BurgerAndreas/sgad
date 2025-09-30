@@ -1,0 +1,85 @@
+defaults:
+  - _self_
+  - controller: egnn
+  - energy: fairchem_energy
+  - noise_schedule: geometric
+  - dataset: spice_dataset
+  - experiment: spice_cartesian
+  - override hydra/launcher: submitit_slurm
+
+seed: 0
+
+device: cuda
+
+learn_torsions: false
+
+num_batches_per_epoch: 100
+
+num_init_samples: 1024
+num_samples_per_epoch: 512
+
+start_epoch: 0
+num_epochs: 2000
+batch_size: 256
+
+train_nfe: 500
+eval_nfe: 500
+num_eval_samples: 1024
+
+lr: 1e-4
+lr_schedule: null
+ 
+buffer_size: 20
+
+min_energy: -2085
+max_energy: -2065
+
+visualize_conformations: True
+compute_coverage: False
+
+tau : 1e-3
+alpha : 1e3
+
+clip_scores: True
+max_score_norm: 50.0
+
+grad_clip: 1e20
+
+eval_freq: 50
+
+conformers_file: null
+duplicates: 1
+# for distributed
+shared_dir: /home/${oc.env:USER}
+amortized: True
+pretrain_epochs: 0
+
+scaled_BM_loss: True
+BM_loss_weight: 0.0
+BM_only_pretrain: False
+use_AM_SDE: True
+
+discretization_scheme: uniform
+
+no_pbase: False
+
+#epochs
+warmup_period: 0
+
+init_model: null
+
+hydra:
+  run:
+    dir: ./results/local/${now:%Y.%m.%d}/${now:%H%M%S}
+  sweep:
+    dir: ./results/${now:%Y.%m.%d}/${now:%H%M%S}
+    subdir: ${hydra.job.num}
+  launcher:
+    max_num_timeout: 100000
+    timeout_min: 4319
+    account: flows
+    qos: flows_high
+    mem_gb: 64
+    nodes: 1
+    gpus_per_node: 8
+    tasks_per_node: ${hydra.launcher.gpus_per_node}

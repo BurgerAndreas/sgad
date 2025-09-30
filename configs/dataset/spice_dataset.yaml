@@ -1,0 +1,6 @@
+_target_: sgad.components.datasets.get_spice_dataset
+_partial_: True
+dataset_path: data/spice_train.txt
+torsion_cache_suffix: _torsion
+learn_torsions: ${learn_torsions}
+relax: False

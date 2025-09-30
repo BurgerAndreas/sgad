@@ -1,0 +1,2 @@
+_target_: sgad.components.noise_schedule.LinearNoiseSchedule
+sigma: 1.0

@@ -1,0 +1,2 @@
+_target_: sgad.energies.fairchem_energy.FairChemEnergy
+_partial_: True

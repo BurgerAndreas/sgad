@@ -1,0 +1,3 @@
+_target_: sgad.components.noise_schedule.LinearTorsionNoiseSchedule
+sigma: 3.14159265359
+ntiles: 6

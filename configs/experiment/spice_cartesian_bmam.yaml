@@ -1,0 +1,53 @@
+# @package _global_
+
+defaults:
+  - override /controller: egnn
+  - override /noise_schedule: geometric
+  - override /energy: fairchem_energy
+  - override /dataset: spice_dataset
+  - _self_
+
+noise_schedule:
+    sigma_min: 1e-3
+    sigma_max: 1.0
+
+controller:
+  n_atoms: 100
+  hidden_nf: 128
+  n_layers: 12
+
+num_epochs: 5000
+batch_size: 64
+# duplicate the same molecule type conditioning in the same batch.
+# batch_size should be divisible by duplicates if you want the expected batch_size
+duplicates: 8
+num_samples_per_epoch: 128
+
+max_score_norm: 150.0
+discretization_scheme: ql
+
+num_init_samples: 1024
+
+num_eval_samples: 128
+eval_batch_size: 64
+train_nfe: 500
+
+buffer_size: 1000
+
+amortized: true
+
+min_energy: -25
+max_energy: 25
+
+compute_coverage: True
+
+tau : 5e-3
+alpha : 100.0
+
+# Set these flags for pretraining on RDKIT samples with bridge matching
+pretrain_epochs: 0
+BM_only_pretrain: True
+warmup_period: 50
+
+eval_smiles: CCCCOc1ccc(N2C(=O)CC(N(CCCl)CCCl)C2=O)cc1
+conformers_file: data/spice_test_conformers/rot10_2fc9a7c6e8/crest_conformers.xyz
