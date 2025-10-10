@@ -59,32 +59,12 @@ def euler_maruyama_step(
     u, f = sde.f(t, graph_state)
     drift = f * dt
 
-    if hasattr(graph_state, "learn_torsions") and graph_state["learn_torsions"].all():
-        diffusion = sde.g(t) * np.sqrt(dt) * torch.randn_like(graph_state["torsions"])
-        # Update the graph state and substract com
-        graph_state_next = graph_state.clone()
-        graph_state_next["torsions"] = graph_state_next["torsions"] + drift + diffusion
-        graph_state_next["torsions"] = (graph_state_next["torsions"] + np.pi) % (
-            2 * np.pi
-        ) - np.pi
-        graph_state_next["positions"] = set_torsions(
-            graph_state_next["torsions"],
-            graph_state_next["tor_index"],
-            graph_state_next["index_to_rotate"],
-            graph_state_next["positions"],
-            graph_state_next["n_torsions"].max().item(),
-            graph_state_next["tor_per_mol_label"],
-        )
-        graph_state_next["positions"] = subtract_com_batch(
-            graph_state_next["positions"], graph_state_next["batch"]
-        )
-    else:
-        diffusion = sde.g(t) * np.sqrt(dt) * torch.randn_like(graph_state["positions"])
-        # Update the graph state and substract com
-        graph_state_next = graph_add(graph_state, drift + diffusion)
-        graph_state_next["positions"] = subtract_com_batch(
-            graph_state_next["positions"], graph_state_next["batch"]
-        )
+    diffusion = sde.g(t) * np.sqrt(dt) * torch.randn_like(graph_state["positions"])
+    # Update the graph state and substract com
+    graph_state_next = graph_add(graph_state, drift + diffusion)
+    graph_state_next["positions"] = subtract_com_batch(
+        graph_state_next["positions"], graph_state_next["batch"]
+    )
     return u, graph_state_next
 
 

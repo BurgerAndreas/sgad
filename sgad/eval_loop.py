@@ -84,14 +84,9 @@ def evaluation(
         # generated_energies = outputs["energy"]
         states.append(graph_state)
         outputs.append(output)
-        if cfg.learn_torsions:
-            soc_loss += SOC_loss_torsion(
-                controls, graph_state, output["energy"], noise_schedule
-            )
-        else:
-            soc_loss += SOC_loss(
-                controls, graph_state, output["energy"], noise_schedule
-            )
+        soc_loss += SOC_loss(
+            controls, graph_state, output["energy"], noise_schedule
+        )
 
     # if not os.path.exists(cfg.sample_dir):
     #    os.makedirs(cfg.sample_dir)

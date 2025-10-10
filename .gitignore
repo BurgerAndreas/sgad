@@ -7,6 +7,14 @@ __pycache__/
 venv/
 .env/
 
+plots/
+*.pt
+*.ckpt
+
+wandb
+
+*.log
+
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 

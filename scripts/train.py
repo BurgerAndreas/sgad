@@ -79,9 +79,9 @@ def main(cfg):
             tau=cfg.tau, alpha=cfg.alpha, device=device
         )
 
-        # THIS MUST BE DONE AFTER LOADING THE ENERGY MODEL!!
-        if cfg.learn_torsions:
-            torch.set_default_dtype(torch.float64)
+        # # THIS MUST BE DONE AFTER LOADING THE ENERGY MODEL!!
+        # if cfg.learn_torsions:
+        #     torch.set_default_dtype(torch.float64)
 
         controller = hydra.utils.instantiate(cfg.controller)
         checkpoint_dir = "checkpoints"
@@ -109,14 +109,9 @@ def main(cfg):
                 )
 
         # Note: Not wrapping this in a DDP since we don't differentiate through SDE simulation.
-        if cfg.learn_torsions:
-            sde = ControlledGraphTorsionSDE(
-                controller, noise_schedule, use_AM_SDE=cfg.use_AM_SDE
-            ).to(device)
-        else:
-            sde = ControlledGraphSDE(
-                controller, noise_schedule, use_AM_SDE=cfg.use_AM_SDE
-            ).to(device)
+        sde = ControlledGraphSDE(
+            controller, noise_schedule, use_AM_SDE=cfg.use_AM_SDE
+        ).to(device)
 
         if cfg.distributed:
             controller = torch.nn.parallel.DistributedDataParallel(
@@ -143,8 +138,6 @@ def main(cfg):
             cfg.eval_smiles,
             energy_model,
             duplicate=cfg.num_eval_samples,
-            learn_torsions=cfg.learn_torsions,
-            relax=cfg.dataset.relax,
         )
         # eval only on main process
         eval_sample_loader = torch_geometric.loader.DataLoader(
@@ -170,10 +163,7 @@ def main(cfg):
 
         n_init_batches = int(cfg.num_init_samples // cfg.num_samples_per_epoch)
         n_batches_per_epoch = int(cfg.num_samples_per_epoch // cfg.batch_size)
-        if cfg.learn_torsions:
-            clipper = Clipper1d(cfg.clip_scores, cfg.max_score_norm)
-        else:
-            clipper = Clipper(cfg.clip_scores, cfg.max_score_norm)
+        clipper = Clipper(cfg.clip_scores, cfg.max_score_norm)
 
         print(f"Starting from {cfg.start_epoch}/{cfg.num_epochs} epochs")
         pbar = tqdm(range(start_epoch, cfg.num_epochs))

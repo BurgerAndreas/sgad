@@ -231,74 +231,14 @@ def tordiff_featurizer(
     return data
 
 
-def compute_torsional_data(
-    rdmol: Chem.Mol,
-    smiles: str,
-    energy_model: torch.nn.Module,
-    relax: bool,
-) -> tuple[np.ndarray, dict, Data]:
-    # torsions
-    Chem.GetSymmSSSR(rdmol)  # helps with spice
-    data_tordiff = tordiff_featurizer(smiles, rdmol)
-    rdkit_edge_index = data_tordiff["edge_index"].clone()
-    tor_index = get_tor_indexes_daniel(rdmol)
-
-    n_torsions = len(tor_index)
-    if n_torsions == 0:
-        raise ValueError("no torsions")
-
-    # need to run this before we convert to LongTensor
-    positions = get_positions(
-        rdmol, tor_indexes=tor_index, relax=relax, energy_model=energy_model
-    )
-
-    tor_index = torch.LongTensor(tor_index).T
-    torsions = torch.zeros(n_torsions)
-
-    # remove / adjust data we can't use
-    del data_tordiff.pos  # we don't want two positions sitting around
-    del data_tordiff.edge_index  # we copied this to rdkit_edge_index
-    #
-    # estimator defines `bonds = data.edge_index[:, data.edge_mask].long()`
-    # estimator gets `bond_vec = data.positions[bonds[1]] - data.positions[bonds[0]]`
-    # tordiff rotates `rot_vec = data.positions[bonds[0]] - data.positions[bonds[1]]` "NOTE: different from paper"
-    # we rotate around `rot_axes = positions[tor_index[2]] - positions[tor_index[1]]` with origin `positions[tor_index[1]]`
-    #
-    # our mask is true for edges that = rot_axis, and false otherwise!
-    # this will be in a different order than tor_index, in general
-    edge_mask = torch.stack(
-        [(ti == rdkit_edge_index.T).all(dim=-1) for ti in tor_index[1:3, :].T]
-    ).any(dim=0)
-
-    index_to_rotate = get_index_to_rotate(tor_index, rdkit_edge_index)
-
-    return (
-        positions,
-        dict(
-            learn_torsions=True,
-            tor_index=tor_index,
-            index_to_rotate=index_to_rotate,
-            torsions=torsions,
-            n_torsions=n_torsions,
-            tor_per_mol_label=torch.arange(n_torsions),
-            rdkit_edge_index=rdkit_edge_index,
-            edge_mask=edge_mask,
-        ),
-        data_tordiff,
-    )
-
-
 # generates dataloader of all zeros for a single molecule type. Only need to generate one batch.
 def get_homogeneous_dataset(
     smiles: str,
     energy_model,
     duplicate: int,
-    learn_torsions: bool = False,
-    relax: bool = False,
 ) -> list[Data]:
     """
     Args:
-        learn_torsions: If True, positions are angles and x_positions are a conformer with dihedral angles zero, else zeros
         relax: if torsions is true, relax the conformer before rotating dihedrals to zero
     """
     # import ipdb; ipdb.set_trace()
@@ -310,17 +250,9 @@ def get_homogeneous_dataset(
 
     length_matrix, type_matrix, atom_list = bond_length_matrix(rdmol)
 
-    if learn_torsions:
-        positions, tor_data, data_tordiff = compute_torsional_data(
-            rdmol=rdmol,
-            smiles=smiles,
-            energy_model=energy_model,
-            relax=relax,
-        )
-    else:
-        positions = torch.zeros(len(atom_list), 3)
-        tor_data = {}
-        data_tordiff = Data()
+    positions = torch.zeros(len(atom_list), 3)
+    tor_data = {}
+    data_tordiff = Data()
 
     dataset = []
     for _ in range(duplicate):
@@ -354,9 +286,7 @@ def get_homogeneous_dataset(
 
 def process_smiles(
     smiles: str,
-    learn_torsions: bool,
     energy_model,
-    relax: bool,
     duplicate: int,
     atomic_index_table,
     r_max,
@@ -369,26 +299,15 @@ def process_smiles(
         print("smiles invalid")
         return None
 
-    if learn_torsions:
-        try:
-            positions, tor_data, data_tordiff = compute_torsional_data(
-                rdmol=rdmol,
-                smiles=smiles,
-                energy_model=energy_model,
-                relax=relax,
-            )
-        except ValueError as e:
-            print(e)
-            return None
-    else:
-        positions = torch.zeros((len(atom_list), 3))
-        tor_data = {}
-        data_tordiff = Data()
+    positions = torch.zeros((len(atom_list), 3))
+    tor_data = {}
+    data_tordiff = Data()
 
     for _ in range(duplicate):
+        
+        # TODO@Andreas: get graph using energy_model
         try:
             data_i = get_atomic_graph(atom_list, positions, atomic_index_table)
-
         except ValueError:
             print("atom not available")
             return None
@@ -422,9 +341,6 @@ def get_spice_dataset(
     dataset_path: str,
     energy_model,
     duplicate: int,
-    torsion_cache_suffix: str,
-    learn_torsions: bool,
-    relax: bool,
     cache_only: bool = False,
 ):
     atomic_number_table = energy_model.atomic_numbers
@@ -440,15 +356,7 @@ def get_spice_dataset(
         energy_model_suffix = "_fc"
     else:
         ValueError("energy_model is unrecognized")
-    if learn_torsions:
-        cache_path = (
-            os.path.splitext(dataset_path)[0]
-            + energy_model_suffix
-            + torsion_cache_suffix
-            + ".pkl"
-        )
-    else:
-        cache_path = os.path.splitext(dataset_path)[0] + energy_model_suffix + ".pkl"
+    cache_path = os.path.splitext(dataset_path)[0] + energy_model_suffix + ".pkl"
     if Path(cache_path).is_file():
         print("found cached dataset!")
         if cache_only:
@@ -470,9 +378,7 @@ def get_spice_dataset(
 
     todo = partial(
         process_smiles,
-        learn_torsions=learn_torsions,
         energy_model=energy_model,
-        relax=relax,
         duplicate=duplicate,
         atomic_index_table=atomic_index_table,
         r_max=r_max,
@@ -500,7 +406,6 @@ def test_dataset(
     smiles_list,
     energy_model,
     duplicate: int = 1,
-    learn_torsions: bool = False,
 ):
     atomic_number_table = energy_model.atomic_numbers
     atomic_index_table = {int(z): i for i, z in enumerate(atomic_number_table)}
@@ -511,21 +416,9 @@ def test_dataset(
         rdmol = Chem.AddHs(rdmol)
         length_matrix, type_matrix, atom_list = bond_length_matrix(rdmol)
 
-        if learn_torsions:
-            try:
-                positions, tor_data, data_tordiff = compute_torsional_data(
-                    rdmol=rdmol,
-                    smiles=smiles,
-                    energy_model=energy_model,
-                    relax=False,
-                )
-            except ValueError as e:
-                print(e)
-                continue
-        else:
-            positions = torch.zeros((len(atom_list), 3))
-            tor_data = {}
-            data_tordiff = Data()
+        positions = torch.zeros((len(atom_list), 3))
+        tor_data = {}
+        data_tordiff = Data()
 
         for _ in range(duplicate):
             data_i = get_atomic_graph(atom_list, positions, atomic_index_table)

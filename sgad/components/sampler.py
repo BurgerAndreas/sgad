@@ -98,27 +98,12 @@ def populate_buffer_from_loader_rdkit(
         duplicates=duplicates,
         float_dtype=float_dtype,
     )
-    if sde.learn_torsions:
-        grad_logprob_p1base = grad(sde.noise_schedule.logprob_p1base, 0)
 
     with torch.enable_grad():
         grad_list = []
         for graph_state in graph_state_list:
             F = energy_model(graph_state)
             grad_dict = {"energy_grad": -F["forces"], "reg_grad": -F["reg_forces"]}
-            if sde.learn_torsions:
-                energy_grad_tor = grad_pos_E_to_grad_tor_E(
-                    grad_dict["energy_grad"].to(graph_state["torsions"].device),
-                    graph_state["torsions"],
-                    graph_state["tor_index"],
-                    graph_state["index_to_rotate"],
-                    graph_state["positions"],
-                    graph_state["n_torsions"].max().item(),
-                    graph_state["tor_per_mol_label"],
-                )
-                grad_tor_p1base = vmap(grad_logprob_p1base)(graph_state["torsions"])
-                grad_dict["energy_grad_tor"] = energy_grad_tor
-                grad_dict["grad_tor_p1base"] = grad_tor_p1base
             grad_list.append(grad_dict)
     return graph_state_list, grad_list
 
@@ -169,12 +154,9 @@ def data_to_graph_batch(
                 ]
             i += 1
             for j in range(duplicates):
-                if "learn_torsions" in sys.keys():
-                    positions = sys["positions"]
-                else:
-                    positions = conformer_positions[j][: sys["batch"].shape[0]].to(
-                        sys["positions"]
-                    )
+                positions = conformer_positions[j][: sys["batch"].shape[0]].to(
+                    sys["positions"]
+                )
 
                 data_j = Data(
                     edge_index=sys["edge_index"],
@@ -196,14 +178,6 @@ def data_to_graph_batch(
                     dipole=sys["dipole"],
                     charges=sys["charges"],
                 )
-                if "learn_torsions" in sys.keys():
-                    for k in set(sys.keys()) - (
-                        set(data_j.keys()).union(["ptr", "batch"])
-                    ):
-                        if isinstance(sys[k], list):
-                            data_j[k] = sys[k][0]
-                        else:
-                            data_j[k] = sys[k]
                 data_j["edge_attrs"] = sys["edge_attrs"]
                 data_j["smiles"] = smiles
                 data_list.append(data_j)
@@ -252,29 +226,11 @@ def sample_from_loader(
             )
         else:
             graph_state = batch
-            if "learn_torsions" in batch.keys() and (batch["learn_torsions"]).all():
-                graph_state["torsions"] = (
-                    torch.randn_like(graph_state["torsions"])
-                    * sde.noise_schedule.h(torch.Tensor([1.0]).to(device))
-                    + math.pi
-                ) % (2 * math.pi) - math.pi  # this should stay as randn!!!
-                graph_state["positions"] = set_torsions(
-                    graph_state["torsions"],
-                    graph_state["tor_index"],
-                    graph_state["index_to_rotate"],
-                    graph_state["positions"],
-                    graph_state["n_torsions"].max().item(),
-                    graph_state["tor_per_mol_label"],
-                )
-                graph_state["positions"] = subtract_com_batch(
-                    graph_state["positions"], graph_state["batch"]
-                )
-            else:
-                graph_state["positions"] = subtract_com_batch(
-                    torch.randn_like(graph_state["positions"])
-                    * sde.noise_schedule.h(torch.Tensor([1.0]).to(device)),
-                    graph_state["batch"],
-                )
+            graph_state["positions"] = subtract_com_batch(
+                torch.randn_like(graph_state["positions"])
+                * sde.noise_schedule.h(torch.Tensor([1.0]).to(device)),
+                graph_state["batch"],
+            )
         batch_list.append(graph_state)
 
     return batch_list
@@ -310,28 +266,10 @@ def populate_buffer_from_loader(
         float_dtype=float_dtype,
         discretization_scheme=discretization_scheme,
     )
-    if sde.learn_torsions:
-        grad_logprob_p1base = grad(sde.noise_schedule.logprob_p1base, 0)
     with torch.enable_grad():
         grad_list = []
         for graph_state in graph_state_list:
             F = energy_model(graph_state)
             grad_dict = {"energy_grad": -F["forces"], "reg_grad": -F["reg_forces"]}
-            if sde.learn_torsions:
-                energy_grad_tor = grad_pos_E_to_grad_tor_E(
-                    grad_dict["energy_grad"].to(
-                        device=graph_state["torsions"].device,
-                        dtype=graph_state["torsions"].dtype,
-                    ),
-                    graph_state["torsions"],
-                    graph_state["tor_index"],
-                    graph_state["index_to_rotate"],
-                    graph_state["positions"],
-                    graph_state["n_torsions"].max().item(),
-                    graph_state["tor_per_mol_label"],
-                )
-                grad_tor_p1base = vmap(grad_logprob_p1base)(graph_state["torsions"])
-                grad_dict["energy_grad_tor"] = energy_grad_tor
-                grad_dict["grad_tor_p1base"] = grad_tor_p1base
             grad_list.append(grad_dict)
     return graph_state_list, grad_list

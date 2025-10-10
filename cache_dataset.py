@@ -29,8 +29,6 @@ parser.add_argument(
 parser.add_argument(
     "--energy_model", type=str, default="fairchem", choices=energy_models
 )
-parser.add_argument("--torsion_cache_suffix", type=str, default="_torsion")
-parser.add_argument("--learn_torsions", action="store_true")
 
 
 if __name__ == "__main__":
@@ -50,9 +48,6 @@ if __name__ == "__main__":
                 dataset_path,
                 energy_model,
                 duplicate=1,
-                torsion_cache_suffix=args.torsion_cache_suffix,
-                learn_torsions=args.learn_torsions,
-                relax=False,
                 cache_only=True,
             )
         else:

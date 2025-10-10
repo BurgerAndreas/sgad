@@ -183,14 +183,9 @@ def main():
                     "controller_state_dict"
                 ]
             )
-            if cfg.learn_torsions:
-                sde = ControlledGraphTorsionSDE(
-                    controller, noise_schedule, use_AM_SDE=cfg.use_AM_SDE
-                ).to(device)
-            else:
-                sde = ControlledGraphSDE(
-                    controller, noise_schedule, use_AM_SDE=cfg.use_AM_SDE
-                ).to(device)
+            sde = ControlledGraphSDE(
+                controller, noise_schedule, use_AM_SDE=cfg.use_AM_SDE
+            ).to(device)
 
     if args.relax:
         if args.energy == "fairchem":
@@ -298,15 +293,10 @@ def main():
                 fmax=args.fmax,
             )
         else:
-            if cfg:
-                learn_torsions = cfg.get("learn_torsions", False)
-            else:
-                learn_torsions = args.random_torsions
             test_set = test_dataset(
                 [smiles],
                 energy_model,
                 duplicate=num_eval_samples,
-                learn_torsions=learn_torsions,
             )
             test_dataloader = DataLoader(
                 test_set,
