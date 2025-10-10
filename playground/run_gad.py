@@ -3,11 +3,8 @@
 GAD Integration Script for Transition1x Data
 
 This script loads transition1x validation samples and follows the GAD (Gentlest Ascent Dynamics)
-vector using Euler integration for a specified number of steps. At the end, it performs
+vector using integration for a specified number of steps. At the end, it performs
 frequency analysis to check if the final state is a transition state.
-
-Usage:
-    python run_gad.py --nsamples 10 --nsteps 100 [--datapath path/to/transition1x.h5]
 """
 
 import argparse
@@ -29,8 +26,14 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from playground.example_hip import EquiformerTorchCalculator
 from hip.frequency_analysis import analyze_frequencies_torch
 from sgad.utils.graph_utils import coord_atoms_to_torch_geometric
-from sgad.optimizer import Geometry, NaiveSteepestDescent, SteepestDescent, FIRE, BFGS
-from sgad.rfo import RFO
+from sgad.optimizer_np import (
+    Geometry,
+    NaiveSteepestDescent,
+    SteepestDescent,
+    FIRE,
+    BFGS,
+)
+from sgad.rfo_np import RFOptimizer
 
 
 def parse_args():
@@ -221,7 +224,9 @@ class GadCalculatorAdapter:
             an = torch.as_tensor(atomic_nums, dtype=torch.long)
 
         batch = coord_atoms_to_torch_geometric(pos, an).to(self.device)
-        results = self.inner.get_gad(batch, eckart=self.eckart, eckartgad=self.eckartgad)
+        results = self.inner.get_gad(
+            batch, eckart=self.eckart, eckartgad=self.eckartgad
+        )
         gad = results["gad"]
         if isinstance(gad, torch.Tensor):
             forces = gad.detach().cpu()
@@ -243,18 +248,22 @@ def optimize_with_optimizer(
     opt_name,
 ):
     """Run an optimizer treating GAD as forces; return final_pos, trajectory, energies, gad_magnitudes."""
-    adapter = GadCalculatorAdapter(calculator, device, eckart=eckart, eckartgad=eckartgad)
+    adapter = GadCalculatorAdapter(
+        calculator, device, eckart=eckart, eckartgad=eckartgad
+    )
 
     coords0 = initial_batch.pos.detach().cpu().numpy().reshape(-1, 3)
     atomic_nums = initial_batch.atomic_numbers.detach().cpu().numpy()
-    geom = Geometry(coords=coords0, atomic_nums=atomic_nums, calc=adapter)
+    geom = Geometry(
+        coords=coords0, atomic_nums=atomic_nums, calc=adapter
+    )
 
     opt_map = {
         "nsd": NaiveSteepestDescent,
         "sd": SteepestDescent,
         "fire": FIRE,
         "bfgs": BFGS,
-        "rfo": RFO,
+        "rfo": RFOptimizer,
     }
     OptCls = opt_map[opt_name]
     optimizer = OptCls(geom, max_cycles=nsteps, thresh="never")
