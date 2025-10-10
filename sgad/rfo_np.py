@@ -1,4 +1,4 @@
-from sgad.optimizer import Optimizer, Geometry, ANGSTROM_TO_AU, EV_PER_AU
+from sgad.optimizer_np import Optimizer, Geometry, ANGSTROM_TO_AU, EV_PER_AU
 from collections import namedtuple
 
 import numpy as np
@@ -114,7 +114,6 @@ class RFOptimizer(Optimizer):
         self.trust_max = float(trust_max)
         # Constrain initial trust radius if trust_max > trust_radius
         self.trust_radius = min(trust_radius, trust_max)
-        self.log(f"Initial trust radius: {self.trust_radius:.6f}")
         self.hessian_update = hessian_update
         self.hessian_update_func = bfgs_update
         self.hessian_init = hessian_init
@@ -577,12 +576,13 @@ class RFOptimizer(Optimizer):
         return step
 
     def postprocess_opt(self):
-        msg = (
-            f"Successful invocations:\n"
-            f"\t      GDIIS: {self.successful_gdiis}\n"
-            f"\tLine Search: {self.successful_line_search}\n"
-        )
-        self.log(msg)
+        pass
+        # msg = (
+        #     f"Successful invocations:\n"
+        #     f"\t      GDIIS: {self.successful_gdiis}\n"
+        #     f"\tLine Search: {self.successful_line_search}\n"
+        # )
+        # self.log(msg)
 
 
 # [1] http://aip.scitation.org/doi/10.1063/1.1515483 Optimization review

@@ -18,7 +18,12 @@ from scipy.sparse.linalg import spsolve
 
 
 class Geometry:
-    def __init__(self, coords, atomic_nums, calc):
+    def __init__(
+        self,
+        coords,
+        atomic_nums,
+        calc,
+    ):
         """Initialize a Geometry object.
 
         Args:
@@ -43,22 +48,21 @@ class Geometry:
         self._coords = coords.reshape(-1)
         self.coords_changed = True
 
-    @property
-    def energy(self):
+    def _predict(self):
         if self.coords_changed:
             self.results = self.calc.predict(
-                coords=self.coords3d(), atomic_nums=self.atomic_nums, do_hessian=False
+                coords=self.coords3d(), atomic_nums=self.atomic_nums
             )
             self.coords_changed = False
+
+    @property
+    def energy(self):
+        self._predict()
         return self.results["energy"].item()
 
     @property
     def forces(self):
-        if self.coords_changed:
-            self.results = self.calc.predict(
-                coords=self.coords3d(), atomic_nums=self.atomic_nums, do_hessian=False
-            )
-            self.coords_changed = False
+        self._predict()
         return self.results["forces"].cpu().numpy().reshape(-1)
 
     @property
@@ -761,17 +765,18 @@ class Optimizer(metaclass=abc.ABCMeta):
             ) or self.is_converged:
                 self.print_opt_progress(conv_info)
             if self.is_converged:
-                print("Converged!")
-                # Added Andreas
-                print(
-                    f"Optimizer {self.__class__.__name__} converged at cycle {self.cur_cycle}!"
-                )
+                # print("Converged!")
+                # print(
+                #     f"Optimizer {self.__class__.__name__} converged at cycle {self.cur_cycle}!"
+                # )
                 # for k, v in self._convergence_result.items():
                 #     print(f"{k}: {v}")
                 break
             # Allow convergence, before checking for too small steps
             elif self.assert_min_step and (step_norm <= self.min_step_norm):
-                print(f"Step norm is too small: {step_norm:.2e} <= {self.min_step_norm:.2e}")
+                print(
+                    f"Step norm is too small: {step_norm:.2e} <= {self.min_step_norm:.2e}"
+                )
                 break
 
             # Update coordinates
@@ -802,7 +807,8 @@ class Optimizer(metaclass=abc.ABCMeta):
             sys.stdout.flush()
 
         else:
-            print(f"{self.__class__.__name__} pysis result: Number of cycles exceeded!")
+            pass
+            # print(f"{self.__class__.__name__} pysis result: Number of cycles exceeded!")
             # print(f"{self.__class__.__name__} Cycles taken: {self.cur_cycle}")
 
         # Outside loop
@@ -1450,16 +1456,15 @@ class SteepestDescent(Optimizer):
 
         return skip
 
-class NaiveSteepestDescent(Optimizer):
 
+class NaiveSteepestDescent(Optimizer):
     def __init__(self, geometry, alpha=0.1, **kwargs):
         super(NaiveSteepestDescent, self).__init__(geometry, **kwargs)
         self.alpha = alpha
 
     def optimize(self):
-
         self.forces.append(self.geometry.forces)
 
-        step = self.alpha*self.forces[-1]
+        step = self.alpha * self.forces[-1]
         step = self.scale_by_max_step(step)
         return step

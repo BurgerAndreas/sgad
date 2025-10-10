@@ -9,7 +9,7 @@ import sys
 import os
 
 
-from sgad.optimizer import Geometry
+from sgad.optimizer_np import Geometry
 from hip.equiformer_torch_calculator import EquiformerTorchCalculator
 
 

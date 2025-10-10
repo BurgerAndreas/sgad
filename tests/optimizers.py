@@ -20,8 +20,8 @@ from pathlib import Path
 # Import required modules
 import sgad.utils.t1x_dataloader as t1x
 from hip.equiformer_torch_calculator import EquiformerTorchCalculator
-from sgad.optimizer import Geometry, FIRE, BFGS
-from sgad.rfo import RFOptimizer
+from sgad.optimizer_np import Geometry, FIRE, BFGS
+from sgad.rfo_np import RFOptimizer
 
 
 def setup_calculator(checkpoint_path=None, device=None):

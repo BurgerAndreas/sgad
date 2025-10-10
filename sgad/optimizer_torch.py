@@ -1,7 +1,7 @@
 import abc
 from dataclasses import dataclass
 import time
-from typing import Literal, Optional, Tuple, List
+from typing import Literal, Optional, List
 
 import torch
 
@@ -44,8 +44,106 @@ CONV_THRESHS = convert_thresholds_to_ev_angstrom(CONV_THRESHS_ATOMIC)
 Thresh = Literal["gau_loose", "gau", "gau_tight", "gau_vtight", "baker", "never"]
 
 
+def bfgs_multiply_torch(
+    s_list: List[torch.Tensor],
+    y_list: List[torch.Tensor],
+    vector: torch.Tensor,
+    beta: float = 1.0,
+    P: Optional[torch.Tensor] = None,
+    gamma_mult: bool = True,
+    mu_reg: Optional[float] = None,
+):
+    assert len(s_list) == len(y_list)
+    q = vector.clone()
+
+    # Optional regularization of y
+    if mu_reg is not None and mu_reg > 0.0:
+        y_list = [
+            (y + mu_reg * s)
+            if torch.dot(y + mu_reg * s, s) > 0
+            else (
+                y
+                + (max(0.0, -float(torch.dot(s, y)) / float(torch.dot(s, s))) + mu_reg)
+                * s
+            )
+            for s, y in zip(s_list, y_list)
+        ]
+
+    alphas: List[torch.Tensor] = []
+    rhos: List[torch.Tensor] = []
+
+    cycles = len(s_list)
+    for i in range(cycles - 1, -1, -1):
+        s = s_list[i]
+        y = y_list[i]
+        rho = 1.0 / torch.dot(y, s)
+        rhos.append(rho)
+        alpha = rho * torch.dot(s, q)
+        q = q - alpha * y
+        alphas.append(alpha)
+
+    alphas = alphas[::-1]
+    rhos = rhos[::-1]
+
+    if P is not None:
+        if P.ndim == 1:
+            r = q / P
+        else:
+            r = torch.linalg.solve(P, q)
+    elif gamma_mult and cycles > 0:
+        s = s_list[-1]
+        y = y_list[-1]
+        gamma = float(torch.dot(s, y) / torch.dot(y, y))
+        r = q * gamma
+    else:
+        r = q * beta
+
+    for i in range(cycles):
+        s = s_list[i]
+        y = y_list[i]
+        beta_i = rhos[i] * torch.dot(y, r)
+        r = r + s * (alphas[i] - beta_i)
+
+    return r
+
+
+def double_damp_torch(
+    s: torch.Tensor,
+    y: torch.Tensor,
+    H: Optional[torch.Tensor] = None,
+    s_list: Optional[List[torch.Tensor]] = None,
+    y_list: Optional[List[torch.Tensor]] = None,
+    mu_1: float = 0.2,
+    mu_2: Optional[float] = 0.2,
+):
+    sy = torch.dot(s, y)
+    if H is not None:
+        Hy = H @ y
+    else:
+        Hy = bfgs_multiply_torch(s_list or [], y_list or [], y)
+    yHy = torch.dot(y, Hy)
+
+    theta_1 = 1.0
+    if float(sy) < mu_1 * float(yHy):
+        theta_1 = (1.0 - mu_1) * float(yHy) / (float(yHy) - float(sy))
+        s = theta_1 * s + (1.0 - theta_1) * Hy
+
+    if mu_2 is not None:
+        sy = torch.dot(s, y)
+        ss = torch.dot(s, s)
+        theta_2 = 1.0
+        if float(sy) < mu_2 * float(ss):
+            theta_2 = (1.0 - mu_2) * float(ss) / (float(ss) - float(sy))
+        y = theta_2 * y + (1.0 - theta_2) * s
+
+    return s, y
+
+
 class GeometryTorch:
-    def __init__(self, coords: torch.Tensor, atomic_nums, calc):
+    def __init__(self, coords: torch.Tensor, atomic_nums, calc, device=None):
+        if device is None:
+            device = coords.device
+        self.device = device
         self._coords = coords.reshape(-1).detach().clone()
         self.atomic_nums = atomic_nums
         self.calc = calc
@@ -68,7 +166,9 @@ class GeometryTorch:
     @property
     def energy(self) -> float:
         if self.coords_changed:
-            res = self.calc.predict(coords=self.coords3d(), atomic_nums=self.atomic_nums, do_hessian=False)
+            res = self.calc.predict(
+                coords=self.coords3d(), atomic_nums=self.atomic_nums, do_hessian=False
+            )
             self._results = {"energy": res["energy"], "forces": res["forces"]}
             self.coords_changed = False
         return float(self._results["energy"].detach().cpu().item())
@@ -76,7 +176,9 @@ class GeometryTorch:
     @property
     def forces(self) -> torch.Tensor:
         if self.coords_changed:
-            res = self.calc.predict(coords=self.coords3d(), atomic_nums=self.atomic_nums, do_hessian=False)
+            res = self.calc.predict(
+                coords=self.coords3d(), atomic_nums=self.atomic_nums, do_hessian=False
+            )
             self._results = {"energy": res["energy"], "forces": res["forces"]}
             self.coords_changed = False
         return self._results["forces"].reshape(-1)
@@ -137,8 +239,18 @@ class OptimizerTorch(metaclass=abc.ABCMeta):
         force_only: bool = False,
         print_every: int = 100,
         overachieve_factor: float = 0.0,
+        check_eigval_structure: bool = False,
+        device=None,
+        dtype=None,
     ) -> None:
         assert thresh in CONV_THRESHS.keys()
+
+        if device is None:
+            device = geometry.coords.device
+        self.device = device
+        if dtype is None:
+            dtype = geometry.coords.dtype
+        self.dtype = dtype
 
         self.geometry = geometry
         self.thresh = thresh
@@ -150,9 +262,12 @@ class OptimizerTorch(metaclass=abc.ABCMeta):
         self.force_only = force_only
         self.print_every = int(print_every)
         self.overachieve_factor = float(overachieve_factor)
+        self.check_eigval_structure = check_eigval_structure
 
         # Convergence thresholds
-        self.convergence = self.make_conv_dict(thresh, rms_force, rms_force_only, max_force_only, force_only)
+        self.convergence = self.make_conv_dict(
+            thresh, rms_force, rms_force_only, max_force_only, force_only
+        )
         for key, value in self.convergence.items():
             setattr(self, key, value)
 
@@ -169,6 +284,7 @@ class OptimizerTorch(metaclass=abc.ABCMeta):
         self.max_steps: List[float] = []
         self.rms_steps: List[float] = []
         self.cycle_times: List[float] = []
+        self.modified_forces: List[torch.Tensor] = []
 
         self.restarted = False
         self.last_cycle = 0
@@ -217,13 +333,20 @@ class OptimizerTorch(metaclass=abc.ABCMeta):
             steps = steps * (self.max_step / float(steps_max))
         return steps
 
-    def check_convergence(self, step: Optional[torch.Tensor] = None, multiple: float = 1.0, overachieve_factor: Optional[float] = None):
+    def check_convergence(
+        self,
+        step: Optional[torch.Tensor] = None,
+        multiple: float = 1.0,
+        overachieve_factor: Optional[float] = None,
+    ):
         if step is None:
             step = self.steps[-1]
         if overachieve_factor is None:
             overachieve_factor = self.overachieve_factor
 
         forces = self.forces[-1]
+        if len(self.modified_forces) == len(self.forces):
+            forces = self.modified_forces[-1]
 
         rms_force = torch.sqrt(torch.mean(forces * forces))
         rms_step = torch.sqrt(torch.mean(step * step))
@@ -257,13 +380,26 @@ class OptimizerTorch(metaclass=abc.ABCMeta):
         }
 
         desired_eigval_structure = True
+        if self.check_eigval_structure:
+            if (
+                hasattr(self, "ts_mode_eigvals")
+                and hasattr(self, "small_eigval_thresh")
+                and hasattr(self, "roots")
+            ):
+                desired_eigval_structure = int(
+                    (self.ts_mode_eigvals < self.small_eigval_thresh).sum().item()
+                ) == len(self.roots)
         convergence["desired_eigval_structure"] = desired_eigval_structure
         conv_info = ConvInfo(self.cur_cycle, **convergence)
 
         overachieved = False
         if overachieve_factor and overachieve_factor > 0:
-            max_thresh = self.convergence.get("max_force_thresh", 0) / overachieve_factor
-            rms_thresh = self.convergence.get("rms_force_thresh", 0) / overachieve_factor
+            max_thresh = (
+                self.convergence.get("max_force_thresh", 0) / overachieve_factor
+            )
+            rms_thresh = (
+                self.convergence.get("rms_force_thresh", 0) / overachieve_factor
+            )
             max_ok = float(max_force) < max_thresh
             rms_ok = float(rms_force) < rms_thresh
             overachieved = bool(max_ok and rms_ok)
@@ -311,19 +447,50 @@ class OptimizerTorch(metaclass=abc.ABCMeta):
 
 
 class BFGS(OptimizerTorch):
-    def __init__(self, geometry: GeometryTorch, *args, **kwargs):
+    """
+    Differences between NumPy and Torch optimizers:
+    1. Curvature handling (s·y ≤ 0)
+    If s·y becomes nonpositive, plain BFGS corrupts H and you can climb.
+    NumPy path uses plain BFGS by default;
+    the torch path can use damped/double-damped updates.
+    If NumPy hit s·y ≤ 0 more often, it can end much higher.
+    2. Different initial H0 scaling
+    Gamma scaling of H0 (γ = (s·y)/(y·y)) stabilizes early steps.
+    Torch has a two-loop LBFGS with γ option;
+    NumPy BFGS uses H = I.
+    Without γ, NumPy can take poorer early steps.
+    """
+
+    def __init__(self, geometry: GeometryTorch, *args, update: str = "bfgs", **kwargs):
         super().__init__(geometry, *args, **kwargs)
         self.H = self.eye
+        self.update = update
 
     @property
     def eye(self) -> torch.Tensor:
         size = self.geometry.coords.numel()
-        return torch.eye(size, dtype=self.geometry.coords.dtype, device=self.geometry.coords.device)
+        return torch.eye(
+            size, dtype=self.geometry.coords.dtype, device=self.geometry.coords.device
+        )
 
     def bfgs_update(self, s: torch.Tensor, y: torch.Tensor):
         rho = 1.0 / torch.dot(s, y)
         V = self.eye - rho * torch.outer(s, y)
         self.H = V @ self.H @ V.T + rho * torch.outer(s, s)
+
+    def double_damped_bfgs_update(
+        self,
+        s: torch.Tensor,
+        y: torch.Tensor,
+        mu_1: float = 0.2,
+        mu_2: Optional[float] = 0.2,
+    ):
+        s_d, y_d = double_damp_torch(s, y, H=self.H, mu_1=mu_1, mu_2=mu_2)
+        _ = torch.dot(s_d, y_d)
+        self.bfgs_update(s_d, y_d)
+
+    def damped_bfgs_update(self, s: torch.Tensor, y: torch.Tensor, mu_1: float = 0.2):
+        self.double_damped_bfgs_update(s, y, mu_1=mu_1, mu_2=None)
 
     def optimize(self) -> Optional[torch.Tensor]:
         forces = self.geometry.forces
@@ -334,10 +501,69 @@ class BFGS(OptimizerTorch):
         if self.cur_cycle > 0:
             y = self.forces[-2] - forces
             s = self.steps[-1]
-            _ = torch.dot(s, y)
-            self.bfgs_update(s, y)
+            if self.update == "double":
+                self.double_damped_bfgs_update(s, y)
+            elif self.update == "damped":
+                self.damped_bfgs_update(s, y)
+            else:
+                _ = torch.dot(s, y)
+                self.bfgs_update(s, y)
 
         step = self.H @ forces
+        step = self.scale_by_max_step(step)
+        return step
+
+
+class LBFGS(OptimizerTorch):
+    def __init__(
+        self,
+        geometry: GeometryTorch,
+        *args,
+        memory: int = 10,
+        gamma_mult: bool = True,
+        mu_reg: Optional[float] = None,
+        preconditioner: Optional[torch.Tensor] = None,
+        **kwargs,
+    ):
+        super().__init__(geometry, *args, **kwargs)
+        self.memory = memory
+        self.gamma_mult = gamma_mult
+        self.mu_reg = mu_reg
+        self.P = preconditioner
+        self.s_list: List[torch.Tensor] = []
+        self.y_list: List[torch.Tensor] = []
+
+    def optimize(self) -> Optional[torch.Tensor]:
+        forces = self.geometry.forces
+        energy = self.geometry.energy
+        self.forces.append(forces)
+        self.energies.append(float(energy))
+
+        if self.cur_cycle > 0:
+            s = self.steps[-1]
+            y = self.forces[-2] - forces
+            # curvature check; if not positive, skip storing (simple safeguard)
+            if float(torch.dot(s, y)) > 1e-12:
+                self.s_list.append(s.detach().clone())
+                self.y_list.append(y.detach().clone())
+                if len(self.s_list) > self.memory:
+                    self.s_list.pop(0)
+                    self.y_list.pop(0)
+
+        # SD on first iteration
+        if len(self.s_list) == 0:
+            step = forces.clone()
+        else:
+            step = bfgs_multiply_torch(
+                self.s_list,
+                self.y_list,
+                forces,
+                beta=1.0,
+                P=self.P,
+                gamma_mult=self.gamma_mult,
+                mu_reg=self.mu_reg,
+            )
+
         step = self.scale_by_max_step(step)
         return step
 
@@ -365,10 +591,10 @@ class FIRE(OptimizerTorch):
         self.n_reset = n_reset
         self.a_start = a_start
         self.a = self.a_start
-        self.v = torch.zeros_like(geometry.coords)
+        super().__init__(geometry, **kwargs)
+        self.v = torch.zeros_like(geometry.coords, device=self.device, dtype=self.dtype)
         self.velocities: List[torch.Tensor] = [self.v]
         self.time_deltas: List[float] = [self.dt]
-        super().__init__(geometry, **kwargs)
 
     def optimize(self) -> Optional[torch.Tensor]:
         forces = self.geometry.forces
@@ -389,7 +615,7 @@ class FIRE(OptimizerTorch):
                 self.a = self.a * self.f_acc
             self.n_reset += 1
         else:
-            mixed_v = torch.zeros_like(forces)
+            mixed_v = torch.zeros_like(forces, device=self.device, dtype=forces.dtype)
             self.a = self.a_start
             self.dt = self.dt * self.f_acc
             self.n_reset = 0
@@ -448,7 +674,9 @@ class SteepestDescent(OptimizerTorch):
                     self.alpha = self.alpha / self.scale_factor
         if self.alpha > self.alpha_max:
             self.alpha = self.alpha_max
-        if (len(self.skip_log) >= self.dont_skip_after) and all(self.skip_log[-self.dont_skip_after:]):
+        if (len(self.skip_log) >= self.dont_skip_after) and all(
+            self.skip_log[-self.dont_skip_after :]
+        ):
             skip = False
             if self.alpha > self.alpha0:
                 self.alpha = self.alpha0
@@ -484,9 +712,8 @@ __all__ = [
     "GeometryTorch",
     "OptimizerTorch",
     "BFGS",
+    "bfgs_multiply_torch",
     "FIRE",
     "SteepestDescent",
     "NaiveSteepestDescent",
 ]
-
-
