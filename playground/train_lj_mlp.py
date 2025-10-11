@@ -17,31 +17,35 @@ def lennard_jones_energy(r: torch.Tensor, sigma: float, epsilon: float) -> torch
     V(r) = 4 * epsilon * [ (sigma/r)^12 - (sigma/r)^6 ]
     r must be strictly positive.
     """
-    sr = (sigma / r)
+    sr = sigma / r
     sr6 = sr.pow(6)
     sr12 = sr6.pow(2)
     return 4.0 * epsilon * (sr12 - sr6)
 
 
-def lennard_jones_derivative(r: torch.Tensor, sigma: float, epsilon: float) -> torch.Tensor:
+def lennard_jones_derivative(
+    r: torch.Tensor, sigma: float, epsilon: float
+) -> torch.Tensor:
     """d/dr of the Lennard-Jones potential.
 
     dV/dr = 4 * epsilon * ( -12 * sigma^12 / r^13 + 6 * sigma^6 / r^7 )
     """
-    sigma6 = sigma ** 6
-    sigma12 = sigma6 ** 2
+    sigma6 = sigma**6
+    sigma12 = sigma6**2
     term1 = -12.0 * sigma12 / r.pow(13)
     term2 = 6.0 * sigma6 / r.pow(7)
     return 4.0 * epsilon * (term1 + term2)
 
 
-def lennard_jones_second_derivative(r: torch.Tensor, sigma: float, epsilon: float) -> torch.Tensor:
+def lennard_jones_second_derivative(
+    r: torch.Tensor, sigma: float, epsilon: float
+) -> torch.Tensor:
     """d^2/dr^2 of the Lennard-Jones potential.
 
     d2V/dr2 = 4 * epsilon * ( 156 * sigma^12 / r^14 - 42 * sigma^6 / r^8 )
     """
-    sigma6 = sigma ** 6
-    sigma12 = sigma6 ** 2
+    sigma6 = sigma**6
+    sigma12 = sigma6**2
     term1 = 156.0 * sigma12 / r.pow(14)
     term2 = -42.0 * sigma6 / r.pow(8)
     return 4.0 * epsilon * (term1 + term2)
@@ -56,29 +60,39 @@ def rastrigin_energy(x: torch.Tensor, _sigma: float, _epsilon: float) -> torch.T
     return A + x.pow(2) - A * torch.cos(2 * torch.pi * x)
 
 
-def rastrigin_derivative(x: torch.Tensor, _sigma: float, _epsilon: float) -> torch.Tensor:
+def rastrigin_derivative(
+    x: torch.Tensor, _sigma: float, _epsilon: float
+) -> torch.Tensor:
     """First derivative of 1D Rastrigin: f'(x) = 2x + 2πA sin(2πx), A=10."""
     A = 10.0
     return 2.0 * x + 2.0 * torch.pi * A * torch.sin(2 * torch.pi * x)
 
 
-def rastrigin_second_derivative(x: torch.Tensor, _sigma: float, _epsilon: float) -> torch.Tensor:
+def rastrigin_second_derivative(
+    x: torch.Tensor, _sigma: float, _epsilon: float
+) -> torch.Tensor:
     """Second derivative of 1D Rastrigin: f''(x) = 2 + 4π^2 A cos(2πx), A=10."""
     A = 10.0
-    return 2.0 + 4.0 * (torch.pi ** 2) * A * torch.cos(2 * torch.pi * x)
+    return 2.0 + 4.0 * (torch.pi**2) * A * torch.cos(2 * torch.pi * x)
 
 
-def styblinski_tang_energy(x: torch.Tensor, _sigma: float, _epsilon: float) -> torch.Tensor:
+def styblinski_tang_energy(
+    x: torch.Tensor, _sigma: float, _epsilon: float
+) -> torch.Tensor:
     """Styblinski–Tang (1D): f(x) = 0.5 * (x^4 - 16 x^2 + 5 x)."""
     return 0.5 * (x.pow(4) - 16.0 * x.pow(2) + 5.0 * x)
 
 
-def styblinski_tang_derivative(x: torch.Tensor, _sigma: float, _epsilon: float) -> torch.Tensor:
+def styblinski_tang_derivative(
+    x: torch.Tensor, _sigma: float, _epsilon: float
+) -> torch.Tensor:
     """First derivative: f'(x) = 2 x^3 - 16 x + 2.5."""
     return 2.0 * x.pow(3) - 16.0 * x + 2.5
 
 
-def styblinski_tang_second_derivative(x: torch.Tensor, _sigma: float, _epsilon: float) -> torch.Tensor:
+def styblinski_tang_second_derivative(
+    x: torch.Tensor, _sigma: float, _epsilon: float
+) -> torch.Tensor:
     """Second derivative: f''(x) = 6 x^2 - 16."""
     return 6.0 * x.pow(2) - 16.0
 
@@ -155,8 +169,12 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
 
 
-def build_dataset(cfg: Config, device: torch.device) -> tuple[TensorDataset, torch.Tensor, torch.Tensor]:
-    r = torch.linspace(cfg.r_min, cfg.r_max, cfg.num_samples, device=device).unsqueeze(1)
+def build_dataset(
+    cfg: Config, device: torch.device
+) -> tuple[TensorDataset, torch.Tensor, torch.Tensor]:
+    r = torch.linspace(cfg.r_min, cfg.r_max, cfg.num_samples, device=device).unsqueeze(
+        1
+    )
     energy_fn, _, _ = get_energy_functions(cfg.target)
     y = energy_fn(r, cfg.sigma, cfg.epsilon)
     dataset = TensorDataset(r, y)
@@ -168,7 +186,9 @@ def train(cfg: Config) -> tuple[MLP, torch.Tensor, torch.Tensor, torch.Tensor]:
     set_seed(cfg.seed)
 
     dataset, r_all, y_all = build_dataset(cfg, device)
-    loader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True, drop_last=False)
+    loader = DataLoader(
+        dataset, batch_size=cfg.batch_size, shuffle=True, drop_last=False
+    )
 
     model = MLP(cfg.hidden_dim, cfg.hidden_layers).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=cfg.lr)
@@ -196,7 +216,11 @@ def train(cfg: Config) -> tuple[MLP, torch.Tensor, torch.Tensor, torch.Tensor]:
         epoch_second_deriv_loss = 0.0
         epoch_curvature_loss = 0.0
         for xb, yb in loader:
-            needs_grads = (cfg.deriv_weight > 0.0) or (cfg.second_deriv_weight > 0.0) or (cfg.curvature_weight > 0.0)
+            needs_grads = (
+                (cfg.deriv_weight > 0.0)
+                or (cfg.second_deriv_weight > 0.0)
+                or (cfg.curvature_weight > 0.0)
+            )
             if needs_grads:
                 xb = xb.requires_grad_(True)
 
@@ -284,8 +308,18 @@ def train(cfg: Config) -> tuple[MLP, torch.Tensor, torch.Tensor, torch.Tensor]:
                 y_pred_val = model(r_val)
                 val_value_loss = loss_fn(y_pred_val, y_true_val).item()
             fig, ax = plt.subplots(figsize=(6, 4))
-            ax.plot(r_plot.squeeze(1).cpu().numpy(), y_true_plot_epoch.numpy(), label=f"{cfg.target} True", linewidth=2)
-            ax.plot(r_plot.squeeze(1).cpu().numpy(), y_pred_plot_epoch.numpy(), label="MLP Pred", linewidth=2)
+            ax.plot(
+                r_plot.squeeze(1).cpu().numpy(),
+                y_true_plot_epoch.numpy(),
+                label=f"{cfg.target} True",
+                linewidth=2,
+            )
+            ax.plot(
+                r_plot.squeeze(1).cpu().numpy(),
+                y_pred_plot_epoch.numpy(),
+                label="MLP Pred",
+                linewidth=2,
+            )
             ax.set_xlabel("Distance r")
             ax.set_ylabel("Energy V(r)")
             ax.set_title(f"{cfg.target} function (epoch {epoch})")
@@ -304,7 +338,9 @@ def train(cfg: Config) -> tuple[MLP, torch.Tensor, torch.Tensor, torch.Tensor]:
     return model, r_plot.squeeze(1).cpu(), y_true_plot, y_pred_plot
 
 
-def make_plot(cfg: Config, r: torch.Tensor, y_true: torch.Tensor, y_pred: torch.Tensor) -> str:
+def make_plot(
+    cfg: Config, r: torch.Tensor, y_true: torch.Tensor, y_pred: torch.Tensor
+) -> str:
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.plot(r.numpy(), y_true.numpy(), label=f"{cfg.target} True", linewidth=2)
     ax.plot(r.numpy(), y_pred.numpy(), label="MLP Pred", linewidth=2)
@@ -324,13 +360,20 @@ def make_plot(cfg: Config, r: torch.Tensor, y_true: torch.Tensor, y_pred: torch.
 
 
 def parse_args() -> Config:
-    parser = argparse.ArgumentParser(description="Train a small MLP on the Lennard-Jones potential (1D distance)")
+    parser = argparse.ArgumentParser(
+        description="Train a small MLP on the Lennard-Jones potential (1D distance)"
+    )
     parser.add_argument("--epochs", type=int, default=1_000)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--hidden-dim", type=int, default=64)
     parser.add_argument("--hidden-layers", type=int, default=2)
-    parser.add_argument("--target", type=str, choices=["lj", "rastrigin", "styblinski_tang"], default="lj")
+    parser.add_argument(
+        "--target",
+        type=str,
+        choices=["lj", "rastrigin", "styblinski_tang"],
+        default="lj",
+    )
     parser.add_argument("--sigma", type=float, default=1.0)
     parser.add_argument("--epsilon", type=float, default=1.0)
     parser.add_argument("--r-min", type=float, default=0.8)
@@ -341,7 +384,9 @@ def parse_args() -> Config:
     # parser.add_argument("--wandb-project", type=str, default="lj-mlp")
     parser.add_argument("--wandb-run-name", type=str, default=None)
     parser.add_argument("--log-every", type=int, default=10)
-    parser.add_argument("--out-path", type=str, default="examples/lj_mlp_dissociation.png")
+    parser.add_argument(
+        "--out-path", type=str, default="examples/lj_mlp_dissociation.png"
+    )
     parser.add_argument("--loss", type=str, choices=["l1", "l2"], default="l2")
     parser.add_argument("--deriv-weight", type=float, default=0.0)
     parser.add_argument("--second-deriv-weight", type=float, default=0.0)
@@ -382,5 +427,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

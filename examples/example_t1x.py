@@ -30,11 +30,9 @@ for molecule in dataloader:
     print(molecule["transition_state"].keys())
     break
 
-# Sample indices 
+# Sample indices
 np.random.seed(0)
-sampled_indices = np.random.sample(
-    range(1000), 10
-)
+sampled_indices = np.random.sample(range(1000), 10)
 
 # Create final dataloader with sampled indices
 dataloader = t1x.Dataloader(

@@ -7,6 +7,7 @@ under a simple forward noising process, then samples with a reverse-time vector
 field (probability flow when xi=0, Langevin-like when xi>0). It also visualizes
 the forward diffusion and the generated samples across time.
 """
+
 import jax
 import numpy as np
 

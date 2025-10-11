@@ -22,6 +22,7 @@ from matplotlib import pyplot as plt
 base_dir = "plots/score_matching_gad_torch"
 os.makedirs(base_dir, exist_ok=True)
 
+
 # -----------------------
 # Data generation (Torch)
 # -----------------------
@@ -77,11 +78,11 @@ def q0_logpdf(x: torch.Tensor) -> torch.Tensor:
     diffs = x - centers  # (4, 2)
     sq = (diffs * diffs).sum(dim=1)  # (4,)
     # log-sum-exp for numerical stability
-    log_terms = -sq / (2.0 * (sigma ** 2))  # (4,)
-    norm_const = math.log(4.0) + math.log(2.0 * math.pi * (sigma ** 2))
-    return torch.logsumexp(log_terms, dim=0) - torch.tensor(norm_const, dtype=torch.float32)
-
-
+    log_terms = -sq / (2.0 * (sigma**2))  # (4,)
+    norm_const = math.log(4.0) + math.log(2.0 * math.pi * (sigma**2))
+    return torch.logsumexp(log_terms, dim=0) - torch.tensor(
+        norm_const, dtype=torch.float32
+    )
 
 
 def gad_vector_field_batch(x_batch: torch.Tensor) -> torch.Tensor:
@@ -234,7 +235,11 @@ for i in trange(n_gad_s):
     t0 = torch.zeros((bs, 1), dtype=torch.float32)
     v = model(t0, x_gen_gad_stoch[:, i, :])
     noise = torch.randn((bs, 2))
-    x_next = x_gen_gad_stoch[:, i, :] + dt_gad_s * v + math.sqrt(2.0 * eta * dt_gad_s) * noise
+    x_next = (
+        x_gen_gad_stoch[:, i, :]
+        + dt_gad_s * v
+        + math.sqrt(2.0 * eta * dt_gad_s) * noise
+    )
     x_gen_gad_stoch[:, i + 1, :] = x_next
 
 plt.figure(figsize=(23, 5))
@@ -253,5 +258,3 @@ fname = os.path.join(base_dir, "samples_stoch.png")
 plt.savefig(fname)
 print(f"Saved plot to {fname}")
 plt.close()
-
-

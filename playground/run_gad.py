@@ -254,9 +254,7 @@ def optimize_with_optimizer(
 
     coords0 = initial_batch.pos.detach().cpu().numpy().reshape(-1, 3)
     atomic_nums = initial_batch.atomic_numbers.detach().cpu().numpy()
-    geom = Geometry(
-        coords=coords0, atomic_nums=atomic_nums, calc=adapter
-    )
+    geom = Geometry(coords=coords0, atomic_nums=atomic_nums, calc=adapter)
 
     opt_map = {
         "nsd": NaiveSteepestDescent,

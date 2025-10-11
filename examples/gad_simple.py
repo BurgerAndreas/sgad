@@ -60,4 +60,3 @@ def eigvec_dynamics(state):
 
 
 eigvec_dynamics = jax.jit(eigvec_dynamics)
-

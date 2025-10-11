@@ -7,6 +7,7 @@ under a simple forward noising process, then samples with a reverse-time vector
 field (probability flow when xi=0, Langevin-like when xi>0). It also visualizes
 the forward diffusion and the generated samples across time.
 """
+
 import jax
 import numpy as np
 
@@ -144,6 +145,7 @@ q_0_vmap = jax.jit(q_0_vmap)
 grad_q0 = jax.grad(q_0)
 q0_hess = jax.hessian(q_0)
 
+
 def gad_vector_field(state):
     """Compute vector field based on smallest eigenvector of Hessian"""
     grad_x = grad_q0(state)
@@ -159,7 +161,6 @@ def gad_vector_field(state):
 
 gad_vector_field_vmap = jax.vmap(gad_vector_field)
 gad_vector_field_vmap = jax.jit(gad_vector_field_vmap)
-
 
 
 def gad_loss(state, key, params, bs):
@@ -194,9 +195,6 @@ fname = "plots/sm_simple_jax_gad_loss.png"
 plt.savefig(fname)
 print(f"Saved plot to {fname}")
 plt.close()
-
-
-
 
 
 #############################
@@ -238,7 +236,7 @@ plt.close()
 
 
 ###############################
-# Stochastic GAD variant (SDE) 
+# Stochastic GAD variant (SDE)
 ###############################
 
 # Langevin-like integration: x_{k+1} = x_k + dt * v(x_k) + sqrt(2*eta*dt) * N(0, I)
@@ -253,7 +251,9 @@ for i in trange(n_gad_s):
     t0 = jnp.zeros((bs, 1))
     v = state.apply_fn(state.params, t0, x_gen_gad_stoch[:, i, :])
     noise = random.normal(random.fold_in(loop_key, i), shape=(bs, 2))
-    x_next = x_gen_gad_stoch[:, i, :] + dt_gad_s * v + jnp.sqrt(2 * eta * dt_gad_s) * noise
+    x_next = (
+        x_gen_gad_stoch[:, i, :] + dt_gad_s * v + jnp.sqrt(2 * eta * dt_gad_s) * noise
+    )
     x_gen_gad_stoch = x_gen_gad_stoch.at[:, i + 1, :].set(x_next)
 
 plt.figure(figsize=(23, 5))

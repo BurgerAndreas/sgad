@@ -1,11 +1,11 @@
 defaults:
   - _self_
   - controller: egnn
-  - energy: fairchem_energy
+  - energy: hip_gad_energy
   - noise_schedule: geometric
-  - dataset: spice_dataset
-  - experiment: spice_cartesian
-  - override hydra/launcher: submitit_slurm
+  - dataset: t1x_dataset
+  - experiment: t1x_gad
+  # - override hydra/launcher: submitit_slurm
 
 seed: 0
 
@@ -54,10 +54,10 @@ shared_dir: /home/${oc.env:USER}
 amortized: True
 pretrain_epochs: 0
 
-scaled_BM_loss: True
-BM_loss_weight: 0.0
+scale_bridgematching_loss: True
+bridgematching_loss_weight: 0.0
 BM_only_pretrain: False
-use_AM_SDE: True
+use_adjointmatching_sde: True
 
 discretization_scheme: uniform
 

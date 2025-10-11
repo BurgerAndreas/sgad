@@ -54,7 +54,9 @@ os.makedirs(base_dir, exist_ok=True)
 # ---------------------------------------------
 # Torch Geometric batching for raw coords/z
 # ---------------------------------------------
-def batch_coords_atomicnums(coords_b: torch.Tensor, atomic_nums: torch.Tensor) -> TGBatch:
+def batch_coords_atomicnums(
+    coords_b: torch.Tensor, atomic_nums: torch.Tensor
+) -> TGBatch:
     """
     Build a torch_geometric Batch from a batch of coordinate tensors and a single
     atomic number vector.
@@ -154,9 +156,10 @@ class UnifiedController(nn.Module):
         self.atomic_nums = atomic_nums
         input_dim = 3 * num_atoms
         self.potential = potential
-        
+
         if use_egnn:
             from sgad.components.controllers import EGNN_dynamics
+
             # Build one-hot encoding for atomic numbers
             unique_z = torch.unique(atomic_nums).tolist()
             n_atom_types = len(unique_z)
@@ -170,17 +173,19 @@ class UnifiedController(nn.Module):
             self.z_table = {int(z): i for i, z in enumerate(unique_z)}
             self.atom_list = [int(z) for z in atomic_nums.tolist()]
         else:
-            self.model = MLP(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=input_dim)
-    
+            self.model = MLP(
+                input_dim=input_dim, hidden_dim=hidden_dim, output_dim=input_dim
+            )
+
     def _build_batch_dict(self, coords_flat: torch.Tensor, t: torch.Tensor):
         """Convert flat coords (B, 3N) to batch dict for EGNN_dynamics using get_atomic_graph."""
         B = coords_flat.shape[0]
         N = self.num_atoms
         device = coords_flat.device
-        
+
         # Reshape to (B, N, 3)
         positions = coords_flat.reshape(B, N, 3)
-        
+
         # Build a list of Data objects using get_atomic_graph
         data_list = []
         for b in range(B):
@@ -192,18 +197,18 @@ class UnifiedController(nn.Module):
             data_list.append(data)
         # Batch the graphs together
         batched_data = TGBatch.from_data_list(data_list)
-        
+
         batched_data = batched_data.to(device)
-        
+
         # overwrite graph
         # self.potential.generate_graph(data=data, otf_graph=True)
-        
+
         # Extract bond types from edge_index for edge_attrs
         # Since get_atomic_graph doesn't include edge_attrs, we create dummy ones
         n_edges = batched_data.edge_index.shape[1]
         edge_attrs = torch.zeros(n_edges, 2, dtype=torch.long, device=device)
         node_attrs_tensor = batched_data["node_attrs"]
-        
+
         return {
             "positions": batched_data.positions,
             "edge_index": batched_data.edge_index,
@@ -211,7 +216,7 @@ class UnifiedController(nn.Module):
             "node_attrs": node_attrs_tensor,
             "edge_attrs": edge_attrs,
         }
-    
+
     def forward(self, t: torch.Tensor, x_flat: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -229,9 +234,9 @@ class UnifiedController(nn.Module):
 
 
 def main(
-        load_score_ckpt = True,
-        use_egnn = True  # Set to True to use EGNN_dynamics instead of MLP
-    ) -> None:
+    load_score_ckpt=True,
+    use_egnn=True,  # Set to True to use EGNN_dynamics instead of MLP
+) -> None:
     # -----------------------------
     # Setup seeds and HIP calculator
     # -----------------------------
@@ -239,7 +244,6 @@ def main(
     np.random.seed(seed)
     torch.manual_seed(seed)
     g = torch.Generator().manual_seed(seed)
-
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -277,7 +281,6 @@ def main(
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=2e-4)
 
-
     # -----------------------------
     # Training loop: learn GAD(x)
     # -----------------------------
@@ -292,7 +295,7 @@ def main(
         state_dict = torch.load(score_ckpt_path, map_location=device)
         model.load_state_dict(state_dict)
         print(f"Loaded model checkpoint from {score_ckpt_path}")
-    
+
     else:
         for iter_idx in tqdm(range(num_iterations)):
             # Build a batch of noisy positions around the reference geometry
@@ -325,10 +328,12 @@ def main(
             optimizer.step()
 
             loss_plot[iter_idx] = float(loss.detach().item())
-            
+
             log_every = 100
             if iter_idx % log_every == 0 and iter_idx > 0:
-                tqdm.write(f"{iter_idx} loss: {loss.item():.2f} avg: {loss_plot[iter_idx-log_every:iter_idx].mean():.2f}")
+                tqdm.write(
+                    f"{iter_idx} loss: {loss.item():.2f} avg: {loss_plot[iter_idx - log_every : iter_idx].mean():.2f}"
+                )
 
         # Save training loss plot
         plt.figure(figsize=(6, 4))
@@ -350,7 +355,9 @@ def main(
     with torch.no_grad():
         dt = 1e-2
         n_steps = 500
-        x_det = torch.zeros((bs, n_steps + 1, 3 * N), dtype=torch.float32, device=device)
+        x_det = torch.zeros(
+            (bs, n_steps + 1, 3 * N), dtype=torch.float32, device=device
+        )
         # random initial coordinates
         x_det[:, 0, :] = torch.randn((bs, 3 * N), device=device)
         t_dummy = torch.zeros(bs, device=device)
@@ -364,7 +371,9 @@ def main(
         dt_s = 1e-2
         n_steps_s = 500
         eta = 0.5
-        x_stoch = torch.zeros((bs, n_steps_s + 1, 3 * N), dtype=torch.float32, device=device)
+        x_stoch = torch.zeros(
+            (bs, n_steps_s + 1, 3 * N), dtype=torch.float32, device=device
+        )
         x_stoch[:, 0, :] = torch.randn((bs, 3 * N), device=device)
         for i in tqdm(range(n_steps_s), desc="Stochastic integration"):
             v = model(t_dummy, x_stoch[:, i, :]).detach()
@@ -398,36 +407,38 @@ def main(
 
     # Final prints
     print("Training completed.")
-    print(f"Molecule atoms: N={N}, coord dim={3*N}")
+    print(f"Molecule atoms: N={N}, coord dim={3 * N}")
     print(f"Deterministic final RMS: {rms_det[-1]:.4f}")
     print(f"Stochastic final RMS: {rms_stoch[-1]:.4f}")
 
     # ---------------------------------
     # Frequency analysis on final samples
     # ---------------------------------
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     print("Frequency analysis on sampled structures")
-    print("="*60)
-    
+    print("=" * 60)
+
     # Analyze final deterministic samples
     final_det_coords = x_det[:, -1, :].reshape(bs, N, 3).to(device)
-    
+
     ts_count_det = 0
     min_count_det = 0
     higher_count_det = 0
-    
+
     for b in tqdm(range(bs), desc="Frequency analysis on deterministic samples"):
         try:
             # Predict Hessian one sample at a time
-            coords_b1 = final_det_coords[b:b+1, :, :]
+            coords_b1 = final_det_coords[b : b + 1, :, :]
             tg_b = batch_coords_atomicnums(coords_b1, atomic_nums).to(device)
             res_b = calculator.predict(tg_b)
             N = atomic_nums.shape[0]
             hessian_b = res_b["hessian"].reshape(3 * N, 3 * N)
             pos_b = final_det_coords[b].cpu()
-            freq_analysis = analyze_frequencies_torch(hessian_b.cpu(), pos_b, atomic_nums.cpu())
+            freq_analysis = analyze_frequencies_torch(
+                hessian_b.cpu(), pos_b, atomic_nums.cpu()
+            )
             neg_num = freq_analysis["neg_num"]
-            
+
             if neg_num == 0:
                 min_count_det += 1
             elif neg_num == 1:
@@ -437,33 +448,40 @@ def main(
         except Exception as e:
             print(f"Error for batch {b}: {e}")
             # higher_count_det += 1
-    
+
     print(f"\nDeterministic samples (n={bs}):")
-    print(f"  Minima (0 negative eigenvalues):     {min_count_det} ({100*min_count_det/bs:.1f}%)")
-    print(f"  Transition states (1 negative):      {ts_count_det} ({100*ts_count_det/bs:.1f}%)")
-    print(f"  Higher-order saddles (2+ negative):  {higher_count_det} ({100*higher_count_det/bs:.1f}%)")
-    
-    
+    print(
+        f"  Minima (0 negative eigenvalues):     {min_count_det} ({100 * min_count_det / bs:.1f}%)"
+    )
+    print(
+        f"  Transition states (1 negative):      {ts_count_det} ({100 * ts_count_det / bs:.1f}%)"
+    )
+    print(
+        f"  Higher-order saddles (2+ negative):  {higher_count_det} ({100 * higher_count_det / bs:.1f}%)"
+    )
+
     # Analyze final stochastic samples
     ts_count_stoch = 0
     min_count_stoch = 0
     higher_count_stoch = 0
-    
+
     final_stoch_coords = x_stoch[:, -1, :].reshape(bs, N, 3).to(device)
     tg_batch_stoch = batch_coords_atomicnums(final_stoch_coords, atomic_nums)
     tg_batch_stoch = tg_batch_stoch.to(device)
     for b in tqdm(range(bs), desc="Frequency analysis on stochastic samples"):
         try:
             # Predict Hessian one sample at a time and aggregate
-            coords_b1 = final_stoch_coords[b:b+1, :, :]
+            coords_b1 = final_stoch_coords[b : b + 1, :, :]
             tg_b = batch_coords_atomicnums(coords_b1, atomic_nums).to(device)
             res_b = calculator.predict(tg_b)
             N = atomic_nums.shape[0]
             hessian_b = res_b["hessian"].reshape(3 * N, 3 * N)
             pos_b = final_stoch_coords[b].cpu()
-            freq_analysis = analyze_frequencies_torch(hessian_b.cpu(), pos_b, atomic_nums.cpu())
+            freq_analysis = analyze_frequencies_torch(
+                hessian_b.cpu(), pos_b, atomic_nums.cpu()
+            )
             neg_num = freq_analysis["neg_num"]
-            
+
             if neg_num == 0:
                 min_count_stoch += 1
             elif neg_num == 1:
@@ -473,27 +491,42 @@ def main(
         except Exception as e:
             print(f"Error for batch {b}: {e}")
             # higher_count_stoch += 1
-    
+
     print(f"\nStochastic samples (n={bs}):")
-    print(f"  Minima (0 negative eigenvalues):     {min_count_stoch} ({100*min_count_stoch/bs:.1f}%)")
-    print(f"  Transition states (1 negative):      {ts_count_stoch} ({100*ts_count_stoch/bs:.1f}%)")
-    print(f"  Higher-order saddles (2+ negative):  {higher_count_stoch} ({100*higher_count_stoch/bs:.1f}%)")
-    print("="*60)
+    print(
+        f"  Minima (0 negative eigenvalues):     {min_count_stoch} ({100 * min_count_stoch / bs:.1f}%)"
+    )
+    print(
+        f"  Transition states (1 negative):      {ts_count_stoch} ({100 * ts_count_stoch / bs:.1f}%)"
+    )
+    print(
+        f"  Higher-order saddles (2+ negative):  {higher_count_stoch} ({100 * higher_count_stoch / bs:.1f}%)"
+    )
+    print("=" * 60)
 
     # ---------------------------------
     # Save structures and render with PyMOL
     # ---------------------------------
-    atomic_symbols = {1: 'H', 6: 'C', 7: 'N', 8: 'O', 9: 'F', 15: 'P', 16: 'S', 17: 'Cl'}
-    
+    atomic_symbols = {
+        1: "H",
+        6: "C",
+        7: "N",
+        8: "O",
+        9: "F",
+        15: "P",
+        16: "S",
+        17: "Cl",
+    }
+
     def save_xyz(filename, coords, atomic_nums):
         """Save structure in XYZ format."""
-        with open(filename, 'w') as f:
+        with open(filename, "w") as f:
             f.write(f"{len(atomic_nums)}\n")
             f.write("Structure from score matching\n")
             for i, (z, pos) in enumerate(zip(atomic_nums, coords)):
-                symbol = atomic_symbols.get(int(z), 'X')
+                symbol = atomic_symbols.get(int(z), "X")
                 f.write(f"{symbol}  {pos[0]:.6f}  {pos[1]:.6f}  {pos[2]:.6f}\n")
-    
+
     # Save 3 deterministic samples
     print(f"\nSaving structures to {base_dir}/")
     xyz_files_det = []
@@ -503,7 +536,7 @@ def main(
         save_xyz(filename, coords, atomic_nums.cpu().numpy())
         xyz_files_det.append(filename)
         print(f"  Saved {filename}")
-    
+
     # Save 3 stochastic samples
     xyz_files_stoch = []
     for i in range(min(3, bs)):
@@ -512,11 +545,11 @@ def main(
         save_xyz(filename, coords, atomic_nums.cpu().numpy())
         xyz_files_stoch.append(filename)
         print(f"  Saved {filename}")
-    
+
     # Launch PyMOL in headless mode and render structures
     print("\nRendering structures with PyMOL...")
     pymol.finish_launching(["pymol", "-c"])
-    
+
     def setup_pymol():
         """Configure PyMOL settings for nice rendering."""
         cmd.set("ray_opaque_background", 1)
@@ -528,13 +561,13 @@ def main(
         cmd.set("ray_shadows", 0)
         cmd.set("specular", 0)
         cmd.set("depth_cue", 0)
-        
+
         # Pastel element colors
         cmd.set_color("pastel_H", [240, 240, 240])
         cmd.set_color("pastel_C", [0, 142, 109])
         cmd.set_color("pastel_N", [0, 107, 247])
         cmd.set_color("pastel_O", [217, 2, 0])
-    
+
     def render_structure(xyz_file, output_png, obj_name):
         """Load and render a single structure."""
         cmd.load(xyz_file, obj_name)
@@ -549,28 +582,28 @@ def main(
         cmd.color("pastel_O", f"{obj_name} and elem O")
         cmd.zoom(obj_name, buffer=0.5, complete=1)
         cmd.png(output_png, width=800, height=800, dpi=300, ray=1)
-    
+
     # Render individual structures
     setup_pymol()
-    
+
     for i, xyz_file in enumerate(xyz_files_det):
         cmd.reinitialize()
         setup_pymol()
         output_png = os.path.join(base_dir, f"det_sample_{i}.png")
         render_structure(xyz_file, output_png, f"det_{i}")
         print(f"  Rendered {output_png}")
-    
+
     for i, xyz_file in enumerate(xyz_files_stoch):
         cmd.reinitialize()
         setup_pymol()
         output_png = os.path.join(base_dir, f"stoch_sample_{i}.png")
         render_structure(xyz_file, output_png, f"stoch_{i}")
         print(f"  Rendered {output_png}")
-    
+
     # Create a grid view with all structures
     cmd.reinitialize()
     setup_pymol()
-    
+
     # Load all structures with spatial offsets
     for i, xyz_file in enumerate(xyz_files_det):
         obj_name = f"det_{i}"
@@ -585,7 +618,7 @@ def main(
         cmd.color("pastel_N", f"{obj_name} and elem N")
         cmd.color("pastel_O", f"{obj_name} and elem O")
         cmd.translate([i * 10, 0, 0], obj_name)
-    
+
     for i, xyz_file in enumerate(xyz_files_stoch):
         obj_name = f"stoch_{i}"
         cmd.load(xyz_file, obj_name)
@@ -599,12 +632,12 @@ def main(
         cmd.color("pastel_N", f"{obj_name} and elem N")
         cmd.color("pastel_O", f"{obj_name} and elem O")
         cmd.translate([i * 10, -10, 0], obj_name)
-    
+
     cmd.zoom("all", buffer=1.0, complete=1)
     grid_png = os.path.join(base_dir, "all_structures_grid.png")
     cmd.png(grid_png, width=2400, height=1600, dpi=300, ray=1)
     print(f"  Rendered grid view: {grid_png}")
-    
+
     print("\nPyMOL rendering complete!")
 
 

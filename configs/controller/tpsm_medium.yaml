@@ -9,7 +9,7 @@ sigma_max: 3.14
 num_conv_layers: 4
 max_radius: 5.0
 radius_embed_dim: 50
-# scale_by_sigma: false  # we scale outside of the network, if necessary, interacts with ${use_AM_SDE}
+# scale_by_sigma: false  # we scale outside of the network, if necessary, interacts with ${use_adjointmatching_sde}
 use_second_order_repr: false
 residual: true
 batch_norm: true

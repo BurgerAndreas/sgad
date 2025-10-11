@@ -1,0 +1,3 @@
+_target_: sgad.energies.hip_gad_energy.HIPGADEnergy
+_partial_: True
+model_ckpt: ../hip/ckpt/hesspred_v1.ckpt

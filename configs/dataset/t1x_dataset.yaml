@@ -1,0 +1,4 @@
+_target_: sgad.components.datasets.create_t1x_dataset
+_partial_: True
+datapath: ../Datastore/transition1x.h5
+datasplit: train

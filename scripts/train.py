@@ -16,17 +16,15 @@ import torch
 import torch.backends.cudnn as cudnn
 
 import torch_geometric
-from sgad.components.clipper import Clipper, Clipper1d
+from sgad.components.clipper import Clipper
 
-from sgad.components.datasets import get_homogeneous_dataset
+from sgad.components.datasets import create_t1x_dataset
 from sgad.components.sample_buffer import BatchBuffer
 from sgad.components.sampler import (
-    populate_buffer_from_loader,
-    populate_buffer_from_loader_rdkit,
+    populate_buffer_with_samples_and_energy_gradients,
 )
 from sgad.components.sde import (
     ControlledGraphSDE,
-    ControlledGraphTorsionSDE,
 )
 from sgad.eval_loop import evaluation
 from sgad.train_loop import train_one_epoch
@@ -110,7 +108,7 @@ def main(cfg):
 
         # Note: Not wrapping this in a DDP since we don't differentiate through SDE simulation.
         sde = ControlledGraphSDE(
-            controller, noise_schedule, use_AM_SDE=cfg.use_AM_SDE
+            controller, noise_schedule, use_adjointmatching_sde=cfg.use_adjointmatching_sde
         ).to(device)
 
         if cfg.distributed:
@@ -134,9 +132,11 @@ def main(cfg):
         world_size = distributed_mode.get_world_size()
         global_rank = distributed_mode.get_rank()
 
-        eval_sample_dataset = get_homogeneous_dataset(
-            cfg.eval_smiles,
-            energy_model,
+        # Create eval dataset from T1x
+        eval_sample_dataset = create_t1x_dataset(
+            datapath=cfg.dataset.datapath,
+            datasplit="val",
+            energy_model=energy_model,
             duplicate=cfg.num_eval_samples,
         )
         # eval only on main process
@@ -145,7 +145,9 @@ def main(cfg):
             batch_size=cfg.batch_size,
         )
 
-        train_sample_dataset = hydra.utils.instantiate(cfg.dataset)(
+        train_sample_dataset = create_t1x_dataset(
+            datapath=cfg.dataset.datapath,
+            datasplit="train",
             energy_model=energy_model,
             duplicate=(1 if cfg.amortized else world_size),
         )
@@ -168,89 +170,71 @@ def main(cfg):
         print(f"Starting from {cfg.start_epoch}/{cfg.num_epochs} epochs")
         pbar = tqdm(range(start_epoch, cfg.num_epochs))
         for epoch in pbar:
-            if (
-                epoch == start_epoch
-            ):  # should we reinitialize buffer randomly like this if resuming?
-                if cfg.pretrain_epochs > 0:
-                    buffer.add(
-                        *populate_buffer_from_loader_rdkit(
-                            energy_model,
-                            train_sample_loader,
-                            sde,
-                            n_init_batches,
-                            cfg.batch_size,
-                            device,
-                            duplicates=cfg.duplicates,
-                        ),
+            n_batches = (
+                n_init_batches if (epoch == start_epoch) else n_batches_per_epoch
+            )
+            controlled = not (epoch == start_epoch)
+            # if we are resuming training, should we reinitialize the buffer randomly like this?
+            if epoch < cfg.pretrain_epochs:
+                mode = "pretrain"
+                # during pretraining, we use T1x molecular structures directly
+                buffer.add(
+                    *populate_buffer_with_samples_and_energy_gradients(
+                        energy_model=energy_model,
+                        sample_loader=train_sample_loader,
+                        sde=sde,
+                        n_batches=n_batches,
+                        batch_size=cfg.batch_size,
+                        device=device,
+                        duplicates=cfg.duplicates,
+                        nfe=cfg.train_nfe,
+                        controlled=False,  # Use T1x structures directly without SDE
+                        discretization_scheme=cfg.discretization_scheme,
                     )
-                else:
-                    buffer.add(
-                        *populate_buffer_from_loader(
-                            energy_model,
-                            train_sample_loader,
-                            sde,
-                            n_init_batches,
-                            cfg.batch_size,
-                            device,
-                            duplicates=cfg.duplicates,
-                            nfe=cfg.train_nfe,
-                            controlled=False,
-                            discretization_scheme=cfg.discretization_scheme,
-                        )
-                    )
+                )
             else:
-                if epoch < cfg.pretrain_epochs:
-                    buffer.add(
-                        *populate_buffer_from_loader_rdkit(
-                            energy_model,
-                            train_sample_loader,
-                            sde,
-                            n_batches_per_epoch,
-                            cfg.batch_size,
-                            device,
-                            duplicates=cfg.duplicates,
-                        ),
+                # during adjoint sampling, we use the SDE to generate training data
+                mode = "adjoint sampling"
+                buffer.add(
+                    *populate_buffer_with_samples_and_energy_gradients(
+                        energy_model=energy_model,
+                        sample_loader=train_sample_loader,
+                        sde=sde,
+                        n_batches=n_batches,
+                        batch_size=cfg.batch_size,
+                        device=device,
+                        duplicates=cfg.duplicates,
+                        nfe=cfg.train_nfe,
+                        controlled=controlled,
+                        discretization_scheme=cfg.discretization_scheme,
                     )
-                else:
-                    buffer.add(
-                        *populate_buffer_from_loader(
-                            energy_model,
-                            train_sample_loader,
-                            sde,
-                            n_batches_per_epoch,
-                            cfg.batch_size,
-                            device,
-                            duplicates=cfg.duplicates,
-                            nfe=cfg.train_nfe,
-                            discretization_scheme=cfg.discretization_scheme,
-                        )
-                    )
+                )
             train_dataloader = buffer.get_data_loader(cfg.num_batches_per_epoch)
 
             train_dict = train_one_epoch(
-                controller,
-                noise_schedule,
-                clipper,
-                train_dataloader,
-                optimizer,
-                warmup_scheduler,
-                lr_schedule,
-                device,
-                cfg,
+                controller=controller,
+                noise_schedule=noise_schedule,
+                clipper=clipper,
+                train_dataloader=train_dataloader,
+                optimizer=optimizer,
+                warmup_scheduler=warmup_scheduler,
+                lr_schedule=lr_schedule,
+                device=device,
+                cfg=cfg,
                 pretrain_mode=(epoch < cfg.pretrain_epochs),
             )
             if epoch % cfg.eval_freq == 0 or epoch == cfg.num_epochs - 1:
                 if distributed_mode.is_main_process():
                     try:
                         eval_dict = evaluation(
-                            sde,
-                            energy_model,
-                            eval_sample_loader,
-                            noise_schedule,
-                            energy_model.atomic_numbers,
-                            global_rank,
-                            device,
-                            cfg,
+                            sde=sde,
+                            energy_model=energy_model,
+                            eval_sample_loader=eval_sample_loader,
+                            noise_schedule=noise_schedule,
+                            atomic_numbers=energy_model.atomic_numbers,
+                            rank=global_rank,
+                            device=device,
+                            cfg=cfg,
                         )
                         eval_dict["energy_vis"].save("test_im.png")
                         print("saving checkpoint ... ")
@@ -268,14 +252,12 @@ def main(cfg):
                             }
                         torch.save(state, "checkpoints/checkpoint_{}.pt".format(epoch))
                         torch.save(state, "checkpoints/checkpoint_latest.pt")
-                        mode = (
-                            "pretrain"
-                            if epoch < cfg.pretrain_epochs
-                            else "adjoint sampling"
-                        )
                         pbar.set_description(
-                            "mode: {}, train loss: {:.2f}, eval soc loss: {:.2f}".format(
-                                mode, train_dict["loss"], eval_dict["soc_loss"]
+                            "mode: {}, train loss: {:.2f}, eval soc loss: {:.2f}, TS ratio: {:.2f} ({}/{})".format(
+                                mode, train_dict["loss"], eval_dict["soc_loss"], 
+                                eval_dict["transition_state_ratio"], 
+                                eval_dict["num_transition_states"], 
+                                len(eval_dict["frequency_analyses"])
                             )
                         )
                     except Exception as e:  # noqa: F841

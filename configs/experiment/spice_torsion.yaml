@@ -7,7 +7,7 @@ defaults:
   - override /dataset: spice_dataset
 
 learn_torsions: True
-scaled_BM_loss: False
+scale_bridgematching_loss: False
 
 controller:
   num_conv_layers: 6

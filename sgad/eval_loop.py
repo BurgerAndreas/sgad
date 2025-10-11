@@ -1,16 +1,12 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
-import csv
-
 import torch
-from hydra.utils import to_absolute_path
 
-from sgad.components.datasets import xyz_to_loader
+from hip.frequency_analysis import analyze_frequencies_torch
 
 from sgad.components.sde import integrate_sde
-from sgad.components.soc import SOC_loss, SOC_loss_torsion
+from sgad.components.soc import SOC_loss
 
-from sgad.utils.eval_utils import eval_batch
 from sgad.utils.visualize_utils import (
     get_dataset_fig,
     visualize_conformations,
@@ -62,7 +58,7 @@ def evaluation(
     energy_model,
     eval_sample_loader,
     noise_schedule,
-    atomic_number_table,
+    atomic_numbers,
     rank,
     device,
     cfg,
@@ -70,60 +66,85 @@ def evaluation(
     states = []
     outputs = []
     soc_loss = 0.0
+    num_neg_freqs = []
+    num_transition_states = 0  # Count molecules with exactly 1 negative frequency
+    all_frequency_analyses = []
+    
     for batch in eval_sample_loader:
         batch = batch.to(device)
         graph_state, controls = integrate_sde(
             sde, batch, cfg.eval_nfe, only_final_state=False
         )
-        # print(energy_model(graph_state))
         output = energy_model(graph_state)
-
-        # torch.save(graph_state, "samples.pt")
-        # torch.save(outputs, "sample_outputs.pt")
 
         # generated_energies = outputs["energy"]
         states.append(graph_state)
         outputs.append(output)
-        soc_loss += SOC_loss(
-            controls, graph_state, output["energy"], noise_schedule
-        )
+        soc_loss += SOC_loss(controls, graph_state, output["energy"], noise_schedule)
 
-    # if not os.path.exists(cfg.sample_dir):
-    #    os.makedirs(cfg.sample_dir)
-    # save_to_xyz(states, outputs, atomic_number_table, rank, cfg.sample_dir)
-    # soc_loss = SOC_loss(controls, states[0], outputs[0]["energy"], noise_schedule)
+        # Perform frequency analysis for each molecule in the batch
+        batch_ptr = graph_state["ptr"]
+        positions = graph_state["positions"]
+        atomic_nums = graph_state["node_attrs"].argmax(dim=-1)
+        
+        for i in range(len(batch_ptr) - 1):
+            start_idx = batch_ptr[i]
+            end_idx = batch_ptr[i + 1]
+            
+            mol_positions = positions[start_idx:end_idx]
+            mol_atomic_nums = atomic_nums[start_idx:end_idx]
+            
+            # Get hessian from energy model if available
+            if "hessian" in output:
+                hessian = output["hessian"][i]  # Assuming hessian is per-molecule
+            else:
+                # If no hessian available, skip frequency analysis for this molecule
+                continue
+                
+            # Perform frequency analysis
+            frequency_analysis = analyze_frequencies_torch(
+                hessian, mol_positions, mol_atomic_nums
+            )
+            all_frequency_analyses.append(frequency_analysis)
+            neg_freq_count = frequency_analysis["neg_num"]
+            num_neg_freqs.append(neg_freq_count)
+            
+            # Count transition states (exactly 1 negative frequency)
+            if neg_freq_count == 1:
+                num_transition_states += 1
+        
     soc_loss = (soc_loss / cfg.num_eval_samples).detach().cpu().item()
-    if cfg.conformers_file is not None:
-        path = to_absolute_path(cfg.conformers_file)
-        loader = xyz_to_loader(path, cfg.eval_smiles, energy_model)
-        conformer_outputs = energy_model(
-            next(iter(loader)).to(device), regularize=False
-        )
-        # print(conformer_outputs['energy'])
-        # conformer_energies = output["energy"].detach().cpu().numpy()
-
+    
+    # Calculate frequency statistics
+    if num_neg_freqs:
+        avg_neg_freqs = torch.stack(num_neg_freqs).float().mean().item()
+        max_neg_freqs = torch.stack(num_neg_freqs).float().max().item()
+        min_neg_freqs = torch.stack(num_neg_freqs).float().min().item()
+        total_molecules = len(num_neg_freqs)
+        transition_state_ratio = num_transition_states / total_molecules if total_molecules > 0 else 0.0
     else:
-        conformer_outputs = None
+        avg_neg_freqs = 0.0
+        max_neg_freqs = 0.0
+        min_neg_freqs = 0.0
+        transition_state_ratio = 0.0
+    
+    conformer_outputs = None
     Im = get_dataset_fig(
         states[0], outputs[0]["energy"], cfg, outputs=conformer_outputs
     )
+    
     if cfg.visualize_conformations:
         visualize_conformations(
-            states[0], outputs[0], atomic_number_table, n_samples=16
+            states[0], outputs[0], atomic_numbers, n_samples=16
         )
-    if cfg.conformers_file is not None:
-        conformers_path = to_absolute_path(cfg.conformers_file)
-        with open("soc.txt", "a+") as file:
-            file.write(f"{soc_loss}\n")
-    else:
-        raise FileNotFoundError("we must have a cfg.conformers_file")
-
-    if cfg.compute_coverage:
-        cr, cp, threshold_range = eval_batch(
-            states, energy_model, device, conformers_path, cfg.eval_smiles
-        )
-        cr = cr.tolist()
-        with open("recall.csv", "a+", newline="") as file:
-            write = csv.writer(file, delimiter=";")
-            write.writerow(cr)
-    return {"soc_loss": soc_loss, "energy_vis": Im}
+    
+    return {
+        "soc_loss": soc_loss, 
+        "energy_vis": Im,
+        "avg_neg_freqs": avg_neg_freqs,
+        "max_neg_freqs": max_neg_freqs,
+        "min_neg_freqs": min_neg_freqs,
+        "num_transition_states": num_transition_states,
+        "transition_state_ratio": transition_state_ratio,
+        "frequency_analyses": all_frequency_analyses
+    }

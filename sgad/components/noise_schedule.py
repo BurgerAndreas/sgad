@@ -101,30 +101,55 @@ class GeometricNoiseSchedule(BaseNoiseSchedule):
 
 
 def normal_log_prob(value: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-    # compute the variance
+    """Compute log probability of zero-mean normal distribution.
+
+    Args:
+        value: Sample values to evaluate
+        scale: Standard deviation of the normal distribution
+
+    Returns:
+        Log probability: log(N(value | 0, scale^2))
+    """
+    # Compute the variance
     var = scale**2
     log_scale = scale.log()
-    return (
-        # -((value - self.loc) ** 2) / (2 * var)
-        -(value**2) / (2 * var) - log_scale - math.log(math.sqrt(2 * math.pi))
-    )
+    # Log probability formula for zero-mean normal: -x^2/(2*var) - log(scale) - log(sqrt(2*pi))
+    return -(value**2) / (2 * var) - log_scale - math.log(math.sqrt(2 * math.pi))
 
 
 @torch.compile
 def logprob_diffusion_wrapped_normal(
     ntiles: int, sigma: float, t: torch.Tensor, torsions: torch.Tensor
 ) -> torch.Tensor:
+    """Compute log probability for wrapped normal distribution on torus.
+
+    Uses the wrapped normal distribution by summing over periodic copies
+    of the torsion angles in ambient space (tiles around the torus).
+
+    Args:
+        ntiles: Number of tiles to sum over in each direction (total tiles = 2*ntiles + 1)
+        sigma: Base noise scale parameter
+        t: Time parameter (0 to 1)
+        torsions: Torsion angle values in [-pi, pi]
+
+    Returns:
+        Log probability of torsions under wrapped normal distribution
+    """
+    # Time-dependent standard deviation
     std = torch.sqrt(t) * sigma
 
+    # Add batch dimension for torsion values
     tor = torsions[None, ...]
+    # Create periodic offsets: k = {..., -2π, 0, 2π, ...}
     k = (
         torch.linspace(-ntiles, ntiles, 2 * ntiles + 1, device=tor.device).unsqueeze(-1)
         * 2
         * math.pi
     )
 
-    # logp = Normal(loc=loc, scale=std, validate_args=False).log_prob(tor + k)
+    # Compute log probability for each periodic copy
     logp = normal_log_prob(tor + k, scale=std)
+    # Sum probabilities across all tiles (logsumexp for numerical stability)
     return torch.logsumexp(logp, dim=0).squeeze()
 
 
@@ -134,22 +159,38 @@ def get_tor1_in_ambient_space(
     scale_at_t1: float,
     torsions: torch.Tensor,
 ) -> torch.Tensor:
-    """we make the logprob calculations in repeated ambient space"""
-    # ambient space repeats
+    """Sample torsion angles at t=1 in ambient (unwrapped) space.
+
+    Maps torsion angles from the flat torus to ambient space by probabilistically
+    selecting which periodic copy (tile) to use based on the base distribution.
+
+    Args:
+        ntiles: Number of tiles to consider in each direction
+        t: Time parameter (used for device placement)
+        scale_at_t1: Standard deviation of base distribution at t=1
+        torsions: Current torsion angles in [-pi, pi]
+
+    Returns:
+        Torsion angles in ambient space (unbounded), sampled from appropriate tile
+    """
+    # Start with current torsion values
     tor1 = torsions
+    # Create periodic offsets: k = {..., -2π, 0, 2π, ...}
     k = (
         torch.linspace(-ntiles, ntiles, 2 * ntiles + 1, device=tor1.device)
         * 2
         * math.pi
     )
+    # Generate all periodic copies: tor1 + k for each k
     tor1pk = tor1[:, None] + k[None, :]
 
+    # Compute log probability of each tile under zero-mean normal
     logp1 = Normal(
         loc=torch.zeros((1,), device=t.device),
         scale=torch.ones((1,), device=t.device) * scale_at_t1,
     ).log_prob(tor1pk)
 
-    # determine which tile
+    # Sample which tile to use based on probabilities
     idx = torch.multinomial(torch.exp(logp1), num_samples=1)
     tor1 = torch.gather(tor1pk, dim=1, index=idx).squeeze(1)
     return tor1

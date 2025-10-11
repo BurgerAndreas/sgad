@@ -97,7 +97,9 @@ class EGNN_dynamics(nn.Module):
         if not self.uniform:
             h_atom_types = batch["node_attrs"]  # .double()
             h = torch.cat([h_atom_types, h], dim=-1)  # .double()
-            bond_one_hot = torch.nn.functional.one_hot(batch["edge_attrs"][:, 1].long(), num_classes=2)
+            bond_one_hot = torch.nn.functional.one_hot(
+                batch["edge_attrs"][:, 1].long(), num_classes=2
+            )
             edge_attr = torch.cat([bond_one_hot, edge_attr], dim=-1)
         x_final, _ = self.egnn(x, h, edge_index, edge_attr)
         return subtract_com_batch(x_final - x, batch_index)
@@ -143,7 +145,9 @@ class EGNN(nn.Module):
         #     self.coords_range_layer = self.coords_range_layer * 19
         # Encoder
         self.embedding = nn.Linear(in_features=in_node_nf, out_features=self.hidden_nf)
-        self.embedding_out = nn.Linear(in_features=self.hidden_nf, out_features=out_node_nf)
+        self.embedding_out = nn.Linear(
+            in_features=self.hidden_nf, out_features=out_node_nf
+        )
         for i in range(0, n_layers):
             self.add_module(
                 name="gcl_%d" % i,
@@ -183,7 +187,7 @@ class ResWrapper(torch.nn.Module):
 
 class E_GCL(MessagePassing):
     """EGNN layer from https://arxiv.org/pdf/2102.09844.pdf
-    EGCL = Equivariant Graph Convolutional Layer 
+    EGCL = Equivariant Graph Convolutional Layer
     """
 
     def __init__(
