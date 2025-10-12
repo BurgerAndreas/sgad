@@ -18,7 +18,7 @@ from hip.masses import MASS_DICT
 
 from nets.scatter_utils import scatter_mean
 
-GLOBAL_ATOM_NUMBERS = torch.tensor([1, 6, 7, 8])
+GLOBAL_ATOM_NUMBERS = torch.tensor([1, 6, 7, 8], dtype=torch.long)
 GLOBAL_ATOM_SYMBOLS = np.array(["H", "C", "N", "O"])
 Z_TO_ATOM_SYMBOL = {
     1: "H",
@@ -107,7 +107,7 @@ class HIPGADEnergy(torch.nn.Module):
 
         # Set atomic numbers for compatibility with existing code
         self.atomic_numbers = torch.tensor(
-            [1, 6, 7, 8, 9, 15, 16, 17, 35, 53], dtype=torch.long
+            [1, 6, 7, 8], dtype=torch.long
         )
 
     def __call__(
@@ -131,30 +131,33 @@ class HIPGADEnergy(torch.nn.Module):
 
         output_dict = {}
 
-        batch = batch.to(self.potential.device)
+        batch = batch.to(self.calculator.potential.device)
         batch.pos = remove_mean_batch(batch.pos, batch.batch)
 
-        energy, forces, out = self.potential.forward(
+        energy, forces, out = self.calculator.potential.forward(
             batch,
             otf_graph=True,
         )
 
         B = batch.batch.max() + 1
-        N = batch.pos.shape[0]
+        N = batch.natoms.max() 
 
         hessian = out["hessian"].detach().reshape(B, 3 * N, 3 * N)
 
         output_dict["energy_physical"] = energy.detach()
 
         # Forces shape: [n_atoms, 3]
-        output_dict["forces_physical"] = forces.detach()
+        forces = forces.detach().reshape(B, N*3)
 
         eigenvalues, eigenvectors = torch.linalg.eigh(hessian)
         v = eigenvectors[:, 0]  # [B, 3*N]
         assert v.shape == (B, 3 * N), f"v.shape: {v.shape}, expected: (B, 3*N)"
+        dotprod = torch.einsum("bi,bi->b", -forces, v) # [B]
+        dotprod = dotprod.unsqueeze(-1) # [B, 1]
         # -∇V(x) + 2(∇V, v(x))v(x)
-        gad = forces + 2 * torch.einsum("bi,bi->b", -forces, v) * v
-        output_dict["gad"] = gad
+        gad = forces + 2 * dotprod * v # [B, 3*N]
+        output_dict["gad"] = gad.reshape(B*N, 3)
+        output_dict["forces_physical"] = forces.reshape(B*N, 3)
 
         # Apply temperature scaling to forces
         output_dict["forces"] = output_dict["gad"] / self.tau

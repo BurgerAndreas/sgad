@@ -39,8 +39,8 @@ def interatomic_dist(samples):
 def get_dataset_fig(graph_state, energies, cfg, outputs=None):
     n_systems = len(graph_state["ptr"]) - 1
     n_particles = int(len(graph_state["batch"]) // n_systems)
-    n_spatial_dim = graph_state["positions"].shape[-1]
-    x = graph_state["positions"].view(n_systems, n_particles, n_spatial_dim)
+    n_spatial_dim = graph_state["pos"].shape[-1]
+    x = graph_state["pos"].view(n_systems, n_particles, n_spatial_dim)
     fig, axs = plt.subplots(1, 2, figsize=(12, 4))
 
     dist_samples = interatomic_dist(x).detach().cpu()
@@ -147,7 +147,7 @@ def visualize_conformations(graph_state, outputs, atomic_number_table, n_samples
         atomic_numbers = (
             atomic_number_table[indices.detach().cpu()].detach().cpu().numpy()
         )
-        positions = graph_state["positions"][ptr[i] : ptr[i + 1]].detach().cpu().numpy()
+        positions = graph_state["pos"][ptr[i] : ptr[i + 1]].detach().cpu().numpy()
         mol, smi = to_mol(positions, atomic_numbers)
         # mol = AllChem.AddHs(mol)
         # try:
@@ -181,7 +181,7 @@ def visualize_conformations(graph_state, outputs, atomic_number_table, n_samples
     #         ].int()
     #         atomic_numbers = atomic_number_table[indices].detach().cpu().numpy()
     #         positions = (
-    #             graph_state["positions"][ptr[ij] : ptr[ij + 1]].detach().cpu().numpy()
+    #             graph_state["pos"][ptr[ij] : ptr[ij + 1]].detach().cpu().numpy()
     #         )
     #         atom = Atoms(numbers=atomic_numbers, positions=positions)
     #         ax[i, j] = plot_atoms(atom, ax[i, j])

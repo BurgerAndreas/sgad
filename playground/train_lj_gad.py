@@ -400,7 +400,7 @@ class UnifiedController(nn.Module):
         node_attrs_tensor = batched_data["node_attrs"]
 
         return {
-            "positions": batched_data.positions,
+            "pos": batched_data.positions,
             "edge_index": batched_data.edge_index,
             "batch": batched_data.batch,
             "node_attrs": node_attrs_tensor,

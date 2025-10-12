@@ -5,6 +5,7 @@ defaults:
   - noise_schedule: geometric
   - dataset: t1x_dataset
   - experiment: t1x_gad
+  - c: base
   # - override hydra/launcher: submitit_slurm
 
 seed: 0
@@ -31,8 +32,8 @@ lr_schedule: null
  
 buffer_size: 20
 
-min_energy: -2085
-max_energy: -2065
+# min_energy: -2085
+# max_energy: -2065
 
 visualize_conformations: True
 compute_coverage: False
@@ -53,10 +54,10 @@ duplicates: 1
 shared_dir: /home/${oc.env:USER}
 amortized: True
 pretrain_epochs: 0
-
+prefill_epochs: 0
 scale_bridgematching_loss: True
 bridgematching_loss_weight: 0.0
-BM_only_pretrain: False
+BM_only_pretrain: False # only during pretraining or also during adjoint sampling
 use_adjointmatching_sde: True
 
 discretization_scheme: uniform
@@ -68,20 +69,22 @@ warmup_period: 0
 
 init_model: null
 
-overfit_single_sample: False
+overfit_single_sample: True
+
+version: 1
 
 hydra:
   run:
     dir: ./results/local/${now:%Y.%m.%d}/${now:%H%M%S}
-  sweep:
-    dir: ./results/${now:%Y.%m.%d}/${now:%H%M%S}
-    subdir: ${hydra.job.num}
-  launcher:
-    max_num_timeout: 100000
-    timeout_min: 4319
-    account: flows
-    qos: flows_high
-    mem_gb: 64
-    nodes: 1
-    gpus_per_node: 8
-    tasks_per_node: ${hydra.launcher.gpus_per_node}
+  # sweep:
+  #   dir: ./results/${now:%Y.%m.%d}/${now:%H%M%S}
+  #   subdir: ${hydra.job.num}
+  # launcher:
+  #   max_num_timeout: 100000
+  #   timeout_min: 4319
+  #   account: flows
+  #   qos: flows_high
+  #   mem_gb: 64
+  #   nodes: 1
+  #   gpus_per_node: 8
+  #   tasks_per_node: ${hydra.launcher.gpus_per_node}

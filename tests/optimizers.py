@@ -114,7 +114,7 @@ def load_test_samples(datapath, n_samples=3):
 def create_geometry_from_sample(sample, calculator):
     """Create a Geometry object from a transition1x sample."""
     ts_data = sample["transition_state"]
-    coords = np.array(ts_data["positions"], dtype=np.float32)
+    coords = np.array(ts_data["pos"], dtype=np.float32)
     atomic_nums = np.array(ts_data["atomic_numbers"], dtype=np.int64)
 
     # Flatten coordinates for optimizer

@@ -73,10 +73,6 @@ def train_one_epoch(
         optimizer.zero_grad()
 
         # Get batch of clean structures (t=1) and their energy gradients
-        # if cfg.overfit_single_sample:
-        #     # For overfitting mode, reuse the first batch
-        #     graph_state_1, grad_E = next(iter(loader))
-        # else:
         graph_state_1, grad_E = next(loader)
         graph_state_1 = graph_state_1.to(device)
 
@@ -112,7 +108,7 @@ def train_one_epoch(
             bridgematching_loss = (
                 (
                     predicted_score * alpha_t.pow(2)
-                    - (graph_state_1["positions"] - graph_state_t["positions"])
+                    - (graph_state_1["pos"] - graph_state_t["pos"])
                 )
                 .pow(2)
                 .sum(-1)
@@ -125,7 +121,7 @@ def train_one_epoch(
                     predicted_score
                     - 1
                     / alpha_t.pow(2)
-                    * (graph_state_1["positions"] - graph_state_t["positions"])
+                    * (graph_state_1["pos"] - graph_state_t["pos"])
                 )
                 .pow(2)
                 .sum(-1)

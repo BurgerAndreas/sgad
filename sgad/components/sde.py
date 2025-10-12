@@ -19,7 +19,7 @@ def graph_add(graph: Dict[str, Any], delta: torch.Tensor) -> Dict[str, Any]:
     Returns:
         Modified graph with updated positions
     """
-    graph["positions"] = graph["positions"] + delta
+    graph["pos"] = graph["pos"] + delta
     return graph
 
 
@@ -33,7 +33,7 @@ def graph_scale(graph: Dict[str, Any], scalar: float) -> Dict[str, Any]:
     Returns:
         Modified graph with scaled positions
     """
-    graph["positions"] = graph["positions"] * scalar
+    graph["pos"] = graph["pos"] * scalar
     return graph
 
 
@@ -102,7 +102,7 @@ class ControlledGraphSDE(torch.nn.Module):
         # Convert scalar time to per-system tensor if needed
         if t.dim() == 0:
             n_systems = len(graph_state["ptr"]) - 1
-            t = t * torch.ones(n_systems).to(graph_state["positions"].device)
+            t = t * torch.ones(n_systems).to(graph_state["pos"].device)
 
         # Compute control signal from neural network
         u = self.control(t, graph_state)
@@ -155,13 +155,13 @@ def euler_maruyama_step(
     drift = f * dt
 
     # Diffusion term: g(t) * sqrt(dt) * noise
-    diffusion = sde.g(t) * np.sqrt(dt) * torch.randn_like(graph_state["positions"])
+    diffusion = sde.g(t) * np.sqrt(dt) * torch.randn_like(graph_state["pos"])
 
     # Update the graph state: x_{t+dt} = x_t + drift + diffusion
     graph_state_next = graph_add(graph_state, drift + diffusion)
     # Subtract center of mass to maintain COM = 0 constraint
-    graph_state_next["positions"] = subtract_com_batch(
-        graph_state_next["positions"], graph_state_next["batch"]
+    graph_state_next["pos"] = subtract_com_batch(
+        graph_state_next["pos"], graph_state_next["batch"]
     )
     return u, graph_state_next
 

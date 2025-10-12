@@ -72,6 +72,18 @@ class EGNN_dynamics(nn.Module):
         agg="sum",
         uniform=False,
     ):
+        """
+        uniform=True: Use no chemistry-specific features.
+        Node features: a single scalar per node (the time 
+        t
+        t).
+        Edge features: only the squared distance.
+        uniform=False: Use chemistry-aware features.
+        Node features: one-hot atom type concatenated with the time 
+        t
+        t.
+        Edge features: bond-type one-hot concatenated with the squared distance
+        """
         super().__init__()
         in_node_nf = n_atoms + 1 if not uniform else 1
         in_edge_nf = 3 if not uniform else 1
@@ -85,7 +97,7 @@ class EGNN_dynamics(nn.Module):
         )
 
     def forward(self, t, batch):
-        x = batch["positions"]
+        x = batch["pos"]
         edge_index = batch["edge_index"]
         batch_index = batch["batch"]
         h = torch.ones(x.shape[0], 1).to(x.device)
@@ -95,7 +107,7 @@ class EGNN_dynamics(nn.Module):
             (x[edge_index[0]] - x[edge_index[1]]) ** 2, dim=1, keepdim=True
         )  # .double()
         if not self.uniform:
-            h_atom_types = batch["node_attrs"]  # .double()
+            h_atom_types = batch["node_attrs"]  # [num_nodes, num_atom_types]
             h = torch.cat([h_atom_types, h], dim=-1)  # .double()
             bond_one_hot = torch.nn.functional.one_hot(
                 batch["edge_attrs"][:, 1].long(), num_classes=2
@@ -111,14 +123,14 @@ class EGNN_dynamics_torsion(EGNN_dynamics):
         super().__init__(*args, **kwargs)
 
     def forward(self, t, batch):
-        check_torsions(batch["positions"], batch["tor_index"], batch["torsions"])
+        check_torsions(batch["pos"], batch["tor_index"], batch["torsions"])
         ut_x = super().forward(t, batch)
         return grad_pos_E_to_grad_tor_E(
             ut_x,
             batch["torsions"],
             batch["tor_index"],
             batch["index_to_rotate"],
-            batch["positions"],
+            batch["pos"],
             batch["n_torsions"].max().item(),
             batch["tor_per_mol_label"],
         )

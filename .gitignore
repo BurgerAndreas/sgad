@@ -11,6 +11,8 @@ plots/
 *.pt
 *.ckpt
 
+results/
+
 wandb
 
 *.log

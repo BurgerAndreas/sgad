@@ -2,7 +2,6 @@ import h5py
 import torch
 
 from torch_geometric.data import Data as TGData
-from torch_geometric.data import Batch as TGBatch
 from torch_geometric.loader import DataLoader as TGDataLoader
 
 REFERENCE_ENERGIES = {
@@ -10,7 +9,7 @@ REFERENCE_ENERGIES = {
     6: -1029.4130839658328,
     7: -1484.8710358098756,
     8: -2041.8396277138045,
-    9: -2712.8213146878606,
+    # 9: -2712.8213146878606,
 }
 
 
@@ -28,7 +27,7 @@ def generator(formula, rxn, grp):
     energies = grp["wB97x_6-31G(d).energy"]
     forces = grp["wB97x_6-31G(d).forces"]
     atomic_numbers = list(grp["atomic_numbers"])
-    positions = grp["positions"]
+    positions = grp["pos"]
     molecular_reference_energy = get_molecular_reference_energy(atomic_numbers)
 
     for energy, force, positions in zip(energies, forces, positions):
@@ -38,7 +37,7 @@ def generator(formula, rxn, grp):
             "wB97x_6-31G(d).atomization_energy": energy
             - molecular_reference_energy.__float__(),
             "wB97x_6-31G(d).forces": force.tolist(),
-            "positions": positions,
+            "pos": positions,
             "formula": formula,
             "atomic_numbers": atomic_numbers,
         }
@@ -123,6 +122,27 @@ def t1x_generator(formula, rxn, grp):
     positions = grp["positions"]
     # molecular_reference_energy = get_molecular_reference_energy(atomic_numbers)
 
+    # Build a simple fully connected graph (no self-edges) once per reaction
+    n_atoms = len(atomic_numbers)
+    n_edges = n_atoms**2 - n_atoms
+    source = torch.zeros(n_edges, dtype=torch.long)
+    sink = torch.zeros(n_edges, dtype=torch.long)
+    k = 0
+    for i in range(n_atoms):
+        for j in range(n_atoms):
+            if i != j:
+                source[k] = i
+                sink[k] = j
+                k += 1
+
+    # Global element-to-index mapping (fixed width across dataset)
+    z_table = {z: i for i, z in enumerate(sorted(REFERENCE_ENERGIES.keys()))}
+    indices = torch.tensor([z_table[z] for z in atomic_numbers], dtype=torch.long)
+    node_attrs = torch.nn.functional.one_hot(
+        indices, num_classes=len(z_table)
+    ).to(torch.get_default_dtype())
+    edge_attrs = torch.zeros(n_edges, 2, dtype=torch.long)
+
     for energy, force, positions in zip(energies, forces, positions):
         # d = {
         #     "rxn": rxn,
@@ -130,7 +150,7 @@ def t1x_generator(formula, rxn, grp):
         #     "wB97x_6-31G(d).atomization_energy": energy
         #     - molecular_reference_energy.__float__(),
         #     "wB97x_6-31G(d).forces": force.tolist(),
-        #     "positions": positions,
+        #     "pos": positions,
         #     "formula": formula,
         #     "atomic_numbers": atomic_numbers,
         # }
@@ -139,6 +159,10 @@ def t1x_generator(formula, rxn, grp):
             z=torch.as_tensor(atomic_numbers, dtype=torch.int64),
             charges=torch.as_tensor(atomic_numbers, dtype=torch.int64),
             natoms=torch.tensor([len(atomic_numbers)], dtype=torch.int64),
+            # Graph fields expected by controllers/energies
+            edge_index=torch.stack([source, sink], dim=0),
+            node_attrs=node_attrs,
+            edge_attrs=edge_attrs,
             cell=None,
             pbc=torch.tensor(False, dtype=torch.bool),
         )

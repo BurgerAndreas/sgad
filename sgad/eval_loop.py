@@ -30,7 +30,7 @@ SYM_LIST = {v: k for k, v in ATOMIC_NUMBERS.items()}
 def save_to_xyz(batches, outputs, atomic_numbers, rank, dir):
     k = 0
     for graph_state, output in zip(batches, outputs):
-        positions = graph_state["positions"].detach().cpu()
+        positions = graph_state["pos"].detach().cpu()
         atom_list = graph_state["node_attrs"].detach().cpu()
         ij = 0
         for i in range(len(graph_state["ptr"]) - 1):
@@ -84,7 +84,7 @@ def evaluation(
 
         # Perform frequency analysis for each molecule in the batch
         batch_ptr = graph_state["ptr"]
-        positions = graph_state["positions"]
+        positions = graph_state["pos"]
         atomic_nums = graph_state["node_attrs"].argmax(dim=-1)
 
         for i in range(len(batch_ptr) - 1):

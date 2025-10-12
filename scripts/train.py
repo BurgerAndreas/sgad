@@ -40,7 +40,7 @@ from tqdm import tqdm
 cudnn.benchmark = True
 
 
-@hydra.main(config_path="configs", config_name="train.yaml", version_base="1.1")
+@hydra.main(config_path="../configs", config_name="train.yaml", version_base="1.1")
 def main(cfg):
     try:
         print("Found {} CUDA devices.".format(torch.cuda.device_count()))
@@ -85,6 +85,7 @@ def main(cfg):
         # if cfg.learn_torsions:
         #     torch.set_default_dtype(torch.float64)
 
+        # pass natoms here
         controller = hydra.utils.instantiate(cfg.controller)
         checkpoint_dir = "checkpoints"
         os.makedirs(checkpoint_dir, exist_ok=True)
@@ -146,7 +147,7 @@ def main(cfg):
                 indices=None,
                 which="ts",
             )
-            eval_dataset = [next(dataloader)] * cfg.batch_size
+            eval_dataset = [next(iter(dataloader))] * cfg.batch_size
         else:
             dataloader = T1xTGDataloader(
                 hdf5_file=cfg.dataset.datapath,
@@ -195,7 +196,8 @@ def main(cfg):
             )
             controlled = not (epoch == start_epoch)
             # if we are resuming training, should we reinitialize the buffer randomly like this?
-            if epoch < cfg.pretrain_epochs:
+            # TODO@Andreas: add an option to fill the buffer with T1x structures without doing bridge matching
+            if (epoch < cfg.pretrain_epochs) or epoch < cfg.prefill_epochs:
                 mode = "pretrain"
                 # during pretraining, we use T1x molecular structures directly
                 buffer.add(
@@ -208,7 +210,9 @@ def main(cfg):
                         device=device,
                         duplicates=cfg.duplicates,
                         nfe=cfg.train_nfe,
-                        controlled=False,  # Use T1x structures directly without SDE
+                        controlled=False,  
+                        # prefill = use T1x structures directly without SDE
+                        random=epoch < cfg.pretrain_epochs, 
                         discretization_scheme=cfg.discretization_scheme,
                     )
                 )

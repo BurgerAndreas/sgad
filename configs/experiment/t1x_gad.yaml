@@ -11,7 +11,7 @@ noise_schedule:
   sigma_max: 1.0
 
 controller:
-  n_atoms: 100
+  n_atoms: 4 # how many different atoms are in the dataset (one hot encoding)
   hidden_nf: 128
   n_layers: 12
 
@@ -19,7 +19,7 @@ num_epochs: 5000
 batch_size: 64
 # duplicate the same molecule type conditioning in the same batch.
 # batch_size should be divisible by duplicates if you want the expected batch_size
-duplicates: 8
+# duplicates: 8
 num_samples_per_epoch: 128
 
 max_score_norm: 150.0
@@ -34,8 +34,8 @@ buffer_size: 1000
 
 amortized: true
 
-min_energy: -25
-max_energy: 25
+# min_energy: -25
+# max_energy: 25
 
 compute_coverage: True
 

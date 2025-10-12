@@ -129,7 +129,7 @@ def compute_linearity_metric(positions: torch.Tensor) -> float:
 
 def convert_t1x_to_torch_geo(molecule_data, calculator, device):
     """Convert transition1x molecule data to PyTorch Geometric format."""
-    positions = torch.tensor(molecule_data["positions"], dtype=torch.float32)
+    positions = torch.tensor(molecule_data["pos"], dtype=torch.float32)
     atomic_numbers = torch.tensor(molecule_data["atomic_numbers"], dtype=torch.long)
 
     # Convert to torch geometric batch format

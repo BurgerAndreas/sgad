@@ -33,14 +33,14 @@ def setup_calculator(
 
 def to_numpy_geometry(sample, calculator_np, dtype=np.float32):
     data = copy.deepcopy(sample["transition_state"])
-    coords = np.asarray(data["positions"], dtype=dtype).reshape(-1)
+    coords = np.asarray(data["pos"], dtype=dtype).reshape(-1)
     atomic_nums = np.asarray(data["atomic_numbers"], dtype=np.int64)
     return GeometryNP(coords, atomic_nums, calculator_np)
 
 
 def to_torch_geometry(sample, calculator_th, device=None, dtype=torch.float32):
     data = copy.deepcopy(sample["transition_state"])
-    coords = torch.as_tensor(data["positions"], dtype=dtype, device=device).reshape(-1)
+    coords = torch.as_tensor(data["pos"], dtype=dtype, device=device).reshape(-1)
     atomic_nums = np.asarray(data["atomic_numbers"], dtype=np.int64)
     return GeometryTorch(coords, atomic_nums, calculator_th)
 

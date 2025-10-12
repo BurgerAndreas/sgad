@@ -101,7 +101,7 @@ class FairChemEnergy(torch.nn.Module):
 
     def bond_regularizer(self, batch):
         energy_reg = bond_structure_regularizer(
-            batch["positions"],
+            batch["pos"],
             batch["edge_attrs"][:, 0].unsqueeze(-1),  # bond limits
             batch["edge_attrs"][:, 1].unsqueeze(-1),  # bond types
             batch["edge_index"],
@@ -111,7 +111,7 @@ class FairChemEnergy(torch.nn.Module):
         grad_outputs = [torch.ones_like(energy_reg)]
         gradient = torch.autograd.grad(
             outputs=[energy_reg],  # [n_graphs, ]
-            inputs=[batch["positions"]],  # [n_nodes, 3]
+            inputs=[batch["pos"]],  # [n_nodes, 3]
             grad_outputs=grad_outputs,
             retain_graph=False,  # Make sure the graph is not destroyed during training
             create_graph=False,  # Create graph for second derivative

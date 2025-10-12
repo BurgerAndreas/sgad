@@ -1,0 +1,14 @@
+# @package _global_
+
+num_batches_per_epoch: 100
+
+num_init_samples: 1024
+num_samples_per_epoch: 512
+
+start_epoch: 0
+num_epochs: 2000
+batch_size: 2
+
+train_nfe: 500
+eval_nfe: 500
+num_eval_samples: 1024

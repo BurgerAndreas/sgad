@@ -82,7 +82,7 @@ def check_torsions(
 # from rdkit import Chem
 # for ii in range(graph.batch.max() + 1):
 #     s = graph["smiles"][ii]
-#     p = graph["positions"][graph.batch == ii].detach().cpu().numpy()
+#     p = graph["pos"][graph.batch == ii].detach().cpu().numpy()
 #     tor_inds = graph["tor_index"][:, 0].cpu().tolist()
 #     mol = Chem.MolFromSmiles(s[0])
 #     mol = Chem.AddHs(mol)

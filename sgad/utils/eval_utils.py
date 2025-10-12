@@ -329,7 +329,7 @@ def generate_conformers(
     if relax=True,
     """
     atomic_numbers = atomic_numbers.detach().cpu()
-    positions = graph_state["positions"].detach().cpu()
+    positions = graph_state["pos"].detach().cpu()
     atom_list = graph_state["node_attrs"].detach().cpu()
 
     relaxed_positions = []
@@ -406,7 +406,7 @@ def generate_conformers_with_rdkit(
     charge=0,
 ):
     atomic_numbers = atomic_numbers.detach().cpu()
-    positions = graph_state["positions"].detach().cpu()
+    positions = graph_state["pos"].detach().cpu()
     atom_list = graph_state["node_attrs"].detach().cpu()
 
     relaxed_positions = []

@@ -77,8 +77,6 @@ class AtomicDataset(Dataset):
         return len(self.data)
 
 
-# TODO@Andreas: get graph using energy_model
-
 
 # construct a molecule graph state with fully connected edge index for diffusion controller
 def get_tgdata_with_graph(atom_list, positions, z_table):

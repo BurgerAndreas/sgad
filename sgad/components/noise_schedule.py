@@ -52,13 +52,13 @@ class LinearNoiseSchedule(BaseNoiseSchedule):
     @torch.no_grad()
     def sample_posterior(self, t, graph):
         graph_t = graph.clone()
-        x1 = graph["positions"]
+        x1 = graph["pos"]
         batch_index = graph["batch"]
         t = t[batch_index, None]
         mean = x1 * t
         var = self.sigma**2 * (1 - t) * t
         xt = mean + torch.randn(x1.shape).to(x1.device) * torch.sqrt(var)
-        graph_t["positions"] = subtract_com_batch(xt, graph_t["batch"])
+        graph_t["pos"] = subtract_com_batch(xt, graph_t["batch"])
         return graph_t
 
 
@@ -88,7 +88,7 @@ class GeometricNoiseSchedule(BaseNoiseSchedule):
     @torch.no_grad()
     def sample_posterior(self, t, graph) -> torch.Tensor:
         graph = graph.clone()
-        x1 = graph["positions"]
+        x1 = graph["pos"]
         batch_index = graph["batch"]
         t = t[batch_index, None]
         c_s = self.sigma_diff ** (-2 * t)
@@ -96,7 +96,7 @@ class GeometricNoiseSchedule(BaseNoiseSchedule):
         mean = (c_s - 1) / (c_1 - 1) * x1
         var = self.sigma_max**2 * (c_s - 1) * (c_s - c_1) / (c_1 - 1)
         x_t = mean + torch.randn(x1.shape).to(x1.device) * torch.sqrt(var)
-        graph["positions"] = subtract_com_batch(x_t, graph["batch"])
+        graph["pos"] = subtract_com_batch(x_t, graph["batch"])
         return graph
 
 
@@ -216,16 +216,16 @@ class LinearTorsionNoiseSchedule(LinearNoiseSchedule):
         # project to flat torus
         tort = (tort + math.pi) % (2 * math.pi) - math.pi
         # put into graph
-        graph_t["positions"] = set_torsions(
+        graph_t["pos"] = set_torsions(
             tort,
             graph_t["tor_index"],
             graph_t["index_to_rotate"],
-            graph_t["positions"],
+            graph_t["pos"],
             graph_t["n_torsions"].max().item(),
             graph_t["tor_per_mol_label"],
         )
-        graph_t["positions"] = subtract_com_batch(
-            graph_t["positions"], graph_t["batch"]
+        graph_t["pos"] = subtract_com_batch(
+            graph_t["pos"], graph_t["batch"]
         )
         graph_t["torsions"] = tort
 
@@ -273,16 +273,16 @@ class GeometricTorsionNoiseSchedule(GeometricNoiseSchedule):
         # project to flat torus
         tort = (tort + math.pi) % (2 * math.pi) - math.pi
         # put into graph
-        graph_t["positions"] = set_torsions(
+        graph_t["pos"] = set_torsions(
             tort,
             graph_t["tor_index"],
             graph_t["index_to_rotate"],
-            graph_t["positions"],
+            graph_t["pos"],
             graph_t["n_torsions"].max().item(),
             graph_t["tor_per_mol_label"],
         )
-        graph_t["positions"] = subtract_com_batch(
-            graph_t["positions"], graph_t["batch"]
+        graph_t["pos"] = subtract_com_batch(
+            graph_t["pos"], graph_t["batch"]
         )
         graph_t["torsions"] = tort
 

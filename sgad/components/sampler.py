@@ -97,8 +97,8 @@ MAX_RDKIT_ITERATIONS = 10
 #             float_dtype=float_dtype,
 #         ).to(device)
 
-#         graph_state["positions"] = subtract_com_batch(
-#             graph_state["positions"], graph_state["batch"]
+#         graph_state["pos"] = subtract_com_batch(
+#             graph_state["pos"], graph_state["batch"]
 #         )
 #         batch_list.append(graph_state)
 
@@ -207,7 +207,7 @@ def data_to_graph_batch(
         sys = next(loader)  # contains the graph
 
         # Use the same positions for all duplicates (T1x provides actual structures)
-        base_positions = sys["positions"]
+        base_positions = sys["pos"]
 
         if float_dtype is not None:
             sys = cast_floats_to_dtype(sys, float_dtype)
@@ -220,27 +220,29 @@ def data_to_graph_batch(
 
             # copy over graph (fully connected anyway in adjoint sampling)
             data_j = Data(
+                pos=positions,
+                z=sys["z"],
+                natoms=sys["natoms"],
                 edge_index=sys["edge_index"],
-                positions=positions,
-                shifts=sys["shifts"],
-                unit_shifts=sys["unit_shifts"],
-                cell=sys["cell"],
                 node_attrs=sys["node_attrs"],
-                weight=sys["weight"][0],
-                head=sys["head"][0],
-                energy_weight=sys["energy_weight"][0],
-                forces_weight=sys["forces_weight"][0],
-                stress_weight=sys["stress_weight"][0],
-                virials_weight=sys["virials_weight"][0],
-                forces=sys["forces"],
-                energy=sys["energy"][0],
-                stress=sys["stress"],
-                virials=sys["virials"],
-                dipole=sys["dipole"],
-                charges=sys["charges"],
+                edge_attrs=sys["edge_attrs"],
+                # shifts=sys["shifts"],
+                # unit_shifts=sys["unit_shifts"],
+                # cell=sys["cell"],
+                # node_attrs=sys["node_attrs"],
+                # weight=sys["weight"][0],
+                # head=sys["head"][0],
+                # energy_weight=sys["energy_weight"][0],
+                # forces_weight=sys["forces_weight"][0],
+                # stress_weight=sys["stress_weight"][0],
+                # virials_weight=sys["virials_weight"][0],
+                # forces=sys["forces"],
+                # energy=sys["energy"][0],
+                # stress=sys["stress"],
+                # virials=sys["virials"],
+                # dipole=sys["dipole"],
+                # charges=sys["charges"],
             )
-            data_j["edge_attrs"] = sys["edge_attrs"]
-            # No SMILES field for T1x data
             data_list.append(data_j)
 
     graph_batch_loader = torch_geometric.loader.DataLoader(
@@ -261,6 +263,7 @@ def sample_from_loader(
     duplicates: int = 1,
     nfe: int = 1000,
     controlled: bool = True,
+    random: bool = True,
     float_dtype: Optional[torch.dtype] = None,
     discretization_scheme: str = "uniform",
 ) -> List[Batch]:
@@ -282,6 +285,9 @@ def sample_from_loader(
     Returns:
         List[Batch]: List of graph states (final SDE state if controlled).
     """
+    if not controlled and not random:
+        # use dataset as is
+        return sample_loader
     batch_list = []
     if len(sample_loader) == 0:
         raise ValueError(
@@ -294,8 +300,8 @@ def sample_from_loader(
         batch = data_to_graph_batch(
             loader, duplicates, n_systems, float_dtype=float_dtype
         ).to(device)
-
         if controlled:
+            # sample from our controlled SDE
             # integrate the SDE to generate the final state
             graph_state = integrate_sde(
                 sde=sde,
@@ -307,13 +313,12 @@ def sample_from_loader(
         else:
             # random
             graph_state = batch
-            graph_state["positions"] = subtract_com_batch(
-                positions=torch.randn_like(graph_state["positions"])
+            graph_state["pos"] = subtract_com_batch(
+                positions=torch.randn_like(graph_state["pos"])
                 * sde.noise_schedule.h(torch.Tensor([1.0]).to(device)),
                 batch_index=graph_state["batch"],
             )
         batch_list.append(graph_state)
-
     return batch_list
 
 
@@ -328,6 +333,7 @@ def populate_buffer_with_samples_and_energy_gradients(
     duplicates: int = 1,
     nfe: int = 1000,
     controlled: bool = True,
+    random: bool = True,
     discretization_scheme: str = "uniform",
 ) -> Tuple[List[Batch], List[Dict[str, torch.Tensor]]]:
     """
@@ -364,13 +370,14 @@ def populate_buffer_with_samples_and_energy_gradients(
         duplicates=duplicates,
         nfe=nfe,
         controlled=controlled,
+        random=random,
         float_dtype=float_dtype,
         discretization_scheme=discretization_scheme,
     )
-    with torch.enable_grad():
+    with torch.enable_grad(): # TODO@Andreas: why do we need to enable grad here?
         grad_list = []
         for graph_state in graph_state_list:
             F = energy_model(graph_state)
-            grad_dict = {"energy_grad": -F["forces"], "reg_grad": -F["reg_forces"]}
+            grad_dict = {"energy_grad": -F["forces"]} # , "reg_grad": -F["reg_forces"]
             grad_list.append(grad_dict)
     return graph_state_list, grad_list
