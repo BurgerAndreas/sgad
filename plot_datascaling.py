@@ -107,11 +107,10 @@ for losstype in ["Loss E", "Loss F", "MAE Hessian"]:
         s=100,
         alpha=0.7,
     )
-    
+
     ###############################################################33
     # Marginal Improvement Threshold
     ###############################################################33
-
 
     # Fit polynomial to energy-force-hessian points and add marginal improvement line
     if len(efh_data) > 2:  # Need at least 3 points for degree 2 polynomial
@@ -167,7 +166,7 @@ for losstype in ["Loss E", "Loss F", "MAE Hessian"]:
                 alpha=0.8,
                 label=r"Slope < 10x data, 1% MAE",
             )
-            
+
     # Add horizontal line at 5% above the lowest loss
     min_loss = plot_data["Min_Value"].min()
     max_loss = plot_data["Max_Value"].max()

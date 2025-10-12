@@ -165,7 +165,7 @@ def visualize_conformations(graph_state, outputs, atomic_number_table, n_samples
         ]
     except TypeError:
         legends = [smi + "\n\n reg energy: NA" for j, smi in enumerate(smis)]
-        
+
     img = Draw.MolsToGridImage(
         mols,
         molsPerRow=4,

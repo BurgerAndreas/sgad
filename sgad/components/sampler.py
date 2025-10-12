@@ -205,19 +205,19 @@ def data_to_graph_batch(
     i = 0
     while i < n_systems:
         sys = next(loader)  # contains the graph
-        
+
         # Use the same positions for all duplicates (T1x provides actual structures)
         base_positions = sys["positions"]
-        
+
         if float_dtype is not None:
             sys = cast_floats_to_dtype(sys, float_dtype)
             base_positions = base_positions.to(dtype=float_dtype)
-        
+
         i += 1
         for j in range(duplicates):
             # Use the same positions for all duplicates
             positions = base_positions.clone()
-            
+
             # copy over graph (fully connected anyway in adjoint sampling)
             data_j = Data(
                 edge_index=sys["edge_index"],

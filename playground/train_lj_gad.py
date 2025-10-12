@@ -32,7 +32,7 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 
 from torch_geometric.data import Batch as TGBatch
-from sgad.utils.data_utils import get_atomic_graph
+from sgad.utils.data_utils import get_tgdata_with_graph
 
 
 # -----------------------
@@ -372,7 +372,7 @@ class UnifiedController(nn.Module):
             )
 
     def _build_batch_dict(self, coords_flat: torch.Tensor, t: torch.Tensor):
-        """Convert flat coords (B, 3N) to batch dict for EGNN_dynamics using get_atomic_graph."""
+        """Convert flat coords (B, 3N) to batch dict for EGNN_dynamics using get_tgdata_with_graph."""
         B = coords_flat.shape[0]
         N = self.num_atoms
         device = coords_flat.device
@@ -380,10 +380,10 @@ class UnifiedController(nn.Module):
         # Reshape to (B, N, 3)
         positions = coords_flat.reshape(B, N, 3)
 
-        # Build a list of Data objects using get_atomic_graph
+        # Build a list of Data objects using get_tgdata_with_graph
         data_list = []
         for b in range(B):
-            data = get_atomic_graph(
+            data = get_tgdata_with_graph(
                 atom_list=self.atom_list,
                 positions=positions[b],
                 z_table=self.z_table,

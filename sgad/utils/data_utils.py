@@ -3,6 +3,7 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from typing import Iterable, Dict
 
 from torch_geometric.data import Data
 
@@ -75,10 +76,12 @@ class AtomicDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
+
 # TODO@Andreas: get graph using energy_model
 
+
 # construct a molecule graph state with fully connected edge index for diffusion controller
-def get_atomic_graph(atom_list, positions, z_table):
+def get_tgdata_with_graph(atom_list, positions, z_table):
     n_atoms = len(atom_list)
     n_edges = n_atoms**2 - n_atoms
     source = torch.zeros(n_edges, dtype=torch.long)
@@ -122,4 +125,19 @@ def get_atomic_graph(atom_list, positions, z_table):
         virials=torch.zeros(1, 3, 3),
         virials_weight=0.0,
         weight=1.0,  # not sure what this weight is for
+    )
+
+
+def get_atomic(
+    atom_list: Iterable[int], positions: torch.Tensor, z_table: Dict[int, int]
+) -> Data:
+    atomic_nums = [z_table[z] for z in atom_list]
+    return Data(
+        pos=torch.as_tensor(positions, dtype=torch.float32).reshape(-1, 3),
+        z=torch.as_tensor(atomic_nums, dtype=torch.int64),
+        natoms=torch.tensor([len(atomic_nums)], dtype=torch.int64),
+        # not used
+        charges=torch.as_tensor(atomic_nums, dtype=torch.int64),
+        cell=None,
+        pbc=torch.tensor(False, dtype=torch.bool),
     )

@@ -68,6 +68,8 @@ warmup_period: 0
 
 init_model: null
 
+overfit_single_sample: False
+
 hydra:
   run:
     dir: ./results/local/${now:%Y.%m.%d}/${now:%H%M%S}

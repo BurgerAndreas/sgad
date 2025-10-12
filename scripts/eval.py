@@ -184,7 +184,9 @@ def main():
                 ]
             )
             sde = ControlledGraphSDE(
-                controller, noise_schedule, use_adjointmatching_sde=cfg.use_adjointmatching_sde
+                controller,
+                noise_schedule,
+                use_adjointmatching_sde=cfg.use_adjointmatching_sde,
             ).to(device)
 
     if args.relax:

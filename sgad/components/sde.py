@@ -55,7 +55,10 @@ class ControlledGraphSDE(torch.nn.Module):
     learn_torsions = False
 
     def __init__(
-        self, control: torch.nn.Module, noise_schedule: Any, use_adjointmatching_sde: bool = False
+        self,
+        control: torch.nn.Module,
+        noise_schedule: Any,
+        use_adjointmatching_sde: bool = False,
     ):
         """Initialize the controlled SDE.
 

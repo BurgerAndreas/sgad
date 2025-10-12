@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import copy
 
 import traceback
 from pathlib import Path
@@ -16,9 +17,12 @@ import torch
 import torch.backends.cudnn as cudnn
 
 import torch_geometric
+from torch_geometric.loader import DataLoader as TGDataLoader
+
 from sgad.components.clipper import Clipper
 
-from sgad.components.datasets import create_t1x_dataset
+# from sgad.components.datasets import create_t1x_dataset
+from sgad.utils.t1x_dataloader import T1xTGDataloader
 from sgad.components.sample_buffer import BatchBuffer
 from sgad.components.sampler import (
     populate_buffer_with_samples_and_energy_gradients,
@@ -108,7 +112,9 @@ def main(cfg):
 
         # Note: Not wrapping this in a DDP since we don't differentiate through SDE simulation.
         sde = ControlledGraphSDE(
-            controller, noise_schedule, use_adjointmatching_sde=cfg.use_adjointmatching_sde
+            controller,
+            noise_schedule,
+            use_adjointmatching_sde=cfg.use_adjointmatching_sde,
         ).to(device)
 
         if cfg.distributed:
@@ -133,30 +139,44 @@ def main(cfg):
         global_rank = distributed_mode.get_rank()
 
         # Create eval dataset from T1x
-        eval_sample_dataset = create_t1x_dataset(
-            datapath=cfg.dataset.datapath,
-            datasplit="val",
-            energy_model=energy_model,
-            duplicate=cfg.num_eval_samples,
-        )
+        if cfg.overfit_single_sample:
+            dataloader = T1xTGDataloader(
+                hdf5_file=cfg.dataset.datapath,
+                datasplit="train",
+                indices=None,
+                which="ts",
+            )
+            eval_dataset = [next(dataloader)] * cfg.batch_size
+        else:
+            dataloader = T1xTGDataloader(
+                hdf5_file=cfg.dataset.datapath,
+                datasplit="val",
+                indices=None,
+                which="ts",
+            )
+            eval_dataset = [
+                molecule
+                for i, molecule in enumerate(dataloader)
+                if i < cfg.num_eval_samples
+            ]
         # eval only on main process
-        eval_sample_loader = torch_geometric.loader.DataLoader(
-            dataset=eval_sample_dataset,
-            batch_size=cfg.batch_size,
+        eval_sample_loader = TGDataLoader(
+            eval_dataset, batch_size=cfg.batch_size, shuffle=False
         )
 
-        train_sample_dataset = create_t1x_dataset(
-            datapath=cfg.dataset.datapath,
-            datasplit="train",
-            energy_model=energy_model,
-            duplicate=(1 if cfg.amortized else world_size),
-        )
-
+        if cfg.overfit_single_sample:
+            train_dataset = [copy.deepcopy(_) for _ in eval_dataset]
+        else:
+            train_dataset = [
+                molecule
+                for i, molecule in enumerate(dataloader)
+                if i < cfg.num_samples_per_epoch
+            ]
         train_sample_loader = torch_geometric.loader.DataLoader(
-            dataset=train_sample_dataset,
+            dataset=train_dataset,
             batch_size=1,
             sampler=torch.utils.data.DistributedSampler(
-                train_sample_dataset,
+                train_dataset,
                 num_replicas=world_size,
                 rank=global_rank,
                 shuffle=True,
@@ -254,10 +274,12 @@ def main(cfg):
                         torch.save(state, "checkpoints/checkpoint_latest.pt")
                         pbar.set_description(
                             "mode: {}, train loss: {:.2f}, eval soc loss: {:.2f}, TS ratio: {:.2f} ({}/{})".format(
-                                mode, train_dict["loss"], eval_dict["soc_loss"], 
-                                eval_dict["transition_state_ratio"], 
-                                eval_dict["num_transition_states"], 
-                                len(eval_dict["frequency_analyses"])
+                                mode,
+                                train_dict["loss"],
+                                eval_dict["soc_loss"],
+                                eval_dict["transition_state_ratio"],
+                                eval_dict["num_transition_states"],
+                                len(eval_dict["frequency_analyses"]),
                             )
                         )
                     except Exception as e:  # noqa: F841

@@ -69,7 +69,7 @@ def evaluation(
     num_neg_freqs = []
     num_transition_states = 0  # Count molecules with exactly 1 negative frequency
     all_frequency_analyses = []
-    
+
     for batch in eval_sample_loader:
         batch = batch.to(device)
         graph_state, controls = integrate_sde(
@@ -86,21 +86,21 @@ def evaluation(
         batch_ptr = graph_state["ptr"]
         positions = graph_state["positions"]
         atomic_nums = graph_state["node_attrs"].argmax(dim=-1)
-        
+
         for i in range(len(batch_ptr) - 1):
             start_idx = batch_ptr[i]
             end_idx = batch_ptr[i + 1]
-            
+
             mol_positions = positions[start_idx:end_idx]
             mol_atomic_nums = atomic_nums[start_idx:end_idx]
-            
+
             # Get hessian from energy model if available
             if "hessian" in output:
                 hessian = output["hessian"][i]  # Assuming hessian is per-molecule
             else:
                 # If no hessian available, skip frequency analysis for this molecule
                 continue
-                
+
             # Perform frequency analysis
             frequency_analysis = analyze_frequencies_torch(
                 hessian, mol_positions, mol_atomic_nums
@@ -108,43 +108,43 @@ def evaluation(
             all_frequency_analyses.append(frequency_analysis)
             neg_freq_count = frequency_analysis["neg_num"]
             num_neg_freqs.append(neg_freq_count)
-            
+
             # Count transition states (exactly 1 negative frequency)
             if neg_freq_count == 1:
                 num_transition_states += 1
-        
+
     soc_loss = (soc_loss / cfg.num_eval_samples).detach().cpu().item()
-    
+
     # Calculate frequency statistics
     if num_neg_freqs:
         avg_neg_freqs = torch.stack(num_neg_freqs).float().mean().item()
         max_neg_freqs = torch.stack(num_neg_freqs).float().max().item()
         min_neg_freqs = torch.stack(num_neg_freqs).float().min().item()
         total_molecules = len(num_neg_freqs)
-        transition_state_ratio = num_transition_states / total_molecules if total_molecules > 0 else 0.0
+        transition_state_ratio = (
+            num_transition_states / total_molecules if total_molecules > 0 else 0.0
+        )
     else:
         avg_neg_freqs = 0.0
         max_neg_freqs = 0.0
         min_neg_freqs = 0.0
         transition_state_ratio = 0.0
-    
+
     conformer_outputs = None
     Im = get_dataset_fig(
         states[0], outputs[0]["energy"], cfg, outputs=conformer_outputs
     )
-    
+
     if cfg.visualize_conformations:
-        visualize_conformations(
-            states[0], outputs[0], atomic_numbers, n_samples=16
-        )
-    
+        visualize_conformations(states[0], outputs[0], atomic_numbers, n_samples=16)
+
     return {
-        "soc_loss": soc_loss, 
+        "soc_loss": soc_loss,
         "energy_vis": Im,
         "avg_neg_freqs": avg_neg_freqs,
         "max_neg_freqs": max_neg_freqs,
         "min_neg_freqs": min_neg_freqs,
         "num_transition_states": num_transition_states,
         "transition_state_ratio": transition_state_ratio,
-        "frequency_analyses": all_frequency_analyses
+        "frequency_analyses": all_frequency_analyses,
     }

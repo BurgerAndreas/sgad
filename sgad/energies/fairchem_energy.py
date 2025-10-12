@@ -10,6 +10,7 @@ from fairchem.core import OCPCalculator
 
 from huggingface_hub import hf_hub_download
 
+
 def bond_structure_regularizer(
     positions, bond_limits, bond_types, edge_index, batch_ptr, alpha=1.0
 ):
@@ -92,8 +93,8 @@ class FairChemEnergy(torch.nn.Module):
         self.predictor.model.backbone.use_pbc_single = False
 
         self.device = device
-        self.tau = tau # temperature
-        self.alpha = alpha # regularization strength
+        self.tau = tau  # temperature
+        self.alpha = alpha  # regularization strength
         self.r_max = self.predictor.model.backbone.cutoff
         self.atomic_numbers = torch.arange(100)
         self.default_regularize = default_regularize

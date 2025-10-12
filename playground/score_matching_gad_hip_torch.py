@@ -32,7 +32,7 @@ from torch_geometric.data import Batch as TGBatch
 from torch_geometric.data import Data as TGData
 from tqdm import tqdm
 
-from sgad.utils.data_utils import get_atomic_graph
+from sgad.utils.data_utils import get_tgdata_with_graph
 
 import pymol
 from pymol import cmd
@@ -178,7 +178,7 @@ class UnifiedController(nn.Module):
             )
 
     def _build_batch_dict(self, coords_flat: torch.Tensor, t: torch.Tensor):
-        """Convert flat coords (B, 3N) to batch dict for EGNN_dynamics using get_atomic_graph."""
+        """Convert flat coords (B, 3N) to batch dict for EGNN_dynamics using get_tgdata_with_graph."""
         B = coords_flat.shape[0]
         N = self.num_atoms
         device = coords_flat.device
@@ -186,10 +186,10 @@ class UnifiedController(nn.Module):
         # Reshape to (B, N, 3)
         positions = coords_flat.reshape(B, N, 3)
 
-        # Build a list of Data objects using get_atomic_graph
+        # Build a list of Data objects using get_tgdata_with_graph
         data_list = []
         for b in range(B):
-            data = get_atomic_graph(
+            data = get_tgdata_with_graph(
                 atom_list=self.atom_list,
                 positions=positions[b],
                 z_table=self.z_table,
@@ -204,7 +204,7 @@ class UnifiedController(nn.Module):
         # self.potential.generate_graph(data=data, otf_graph=True)
 
         # Extract bond types from edge_index for edge_attrs
-        # Since get_atomic_graph doesn't include edge_attrs, we create dummy ones
+        # Since get_tgdata_with_graph doesn't include edge_attrs, we create dummy ones
         n_edges = batched_data.edge_index.shape[1]
         edge_attrs = torch.zeros(n_edges, 2, dtype=torch.long, device=device)
         node_attrs_tensor = batched_data["node_attrs"]
