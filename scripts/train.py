@@ -15,6 +15,7 @@ import numpy as np
 import pytorch_warmup as warmup
 import torch
 import torch.backends.cudnn as cudnn
+import wandb
 
 import torch_geometric
 from torch_geometric.loader import DataLoader as TGDataLoader
@@ -64,6 +65,11 @@ def main(cfg):
                 print(OmegaConf.to_yaml(cfg), file=fout)
             with open("env.json", "w") as fout:
                 print(json.dumps(dict(os.environ)), file=fout)
+
+            # Initialize Weights & Biases
+            wandb.init(project=getattr(cfg, "wandb_project", "sgad"),
+                        name=getattr(cfg, "wandb_run_name", None),
+                        config=OmegaConf.to_container(cfg, resolve=True))
 
         device = cfg.device  # "cuda"
 
@@ -145,7 +151,7 @@ def main(cfg):
                 hdf5_file=cfg.dataset.datapath,
                 datasplit="train",
                 indices=None,
-                which="ts",
+                which=cfg.dataset.which,
             )
             eval_dataset = [next(iter(dataloader))] * cfg.batch_size
         else:
@@ -153,7 +159,7 @@ def main(cfg):
                 hdf5_file=cfg.dataset.datapath,
                 datasplit="val",
                 indices=None,
-                which="ts",
+                which=cfg.dataset.which,
             )
             eval_dataset = [
                 molecule
@@ -247,6 +253,16 @@ def main(cfg):
                 cfg=cfg,
                 pretrain_mode=(epoch < cfg.pretrain_epochs),
             )
+            if distributed_mode.is_main_process():
+                try:
+                    current_lr = optimizer.param_groups[0]["lr"]
+                    wandb.log({
+                        "epoch": epoch,
+                        "train/loss": train_dict["loss"],
+                        "train/lr": current_lr,
+                    }, step=epoch)
+                except Exception:
+                    pass
             if epoch % cfg.eval_freq == 0 or epoch == cfg.num_epochs - 1:
                 if distributed_mode.is_main_process():
                     try:
@@ -261,6 +277,26 @@ def main(cfg):
                             cfg=cfg,
                         )
                         eval_dict["energy_vis"].save("test_im.png")
+                        # Log validation metrics to Weights & Biases
+                        try:
+                            log_payload = {
+                                "epoch": epoch,
+                                "eval/soc_loss": eval_dict["soc_loss"],
+                                "eval/avg_neg_freqs": eval_dict.get("avg_neg_freqs", 0.0),
+                                "eval/max_neg_freqs": eval_dict.get("max_neg_freqs", 0.0),
+                                "eval/min_neg_freqs": eval_dict.get("min_neg_freqs", 0.0),
+                                "eval/num_minima": eval_dict.get("num_minima", 0),
+                                "eval/num_transition_states": eval_dict.get("num_transition_states", 0),
+                                "eval/transition_state_ratio": eval_dict.get("transition_state_ratio", 0.0),
+                            }
+                            wandb.log(log_payload, step=epoch)
+                            # Optionally log visualization image
+                            try:
+                                wandb.log({"eval/energy_vis": wandb.Image("test_im.png")}, step=epoch)
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
                         print("saving checkpoint ... ")
                         if cfg.distributed:
                             state = {
@@ -277,13 +313,14 @@ def main(cfg):
                         torch.save(state, "checkpoints/checkpoint_{}.pt".format(epoch))
                         torch.save(state, "checkpoints/checkpoint_latest.pt")
                         pbar.set_description(
-                            "mode: {}, train loss: {:.2f}, eval soc loss: {:.2f}, TS ratio: {:.2f} ({}/{})".format(
+                            "mode: {}, train loss: {:.2f}, eval soc loss: {:.2f}, minima: {}, TS (idx-1): {} / {}, TS ratio: {:.2f}".format(
                                 mode,
                                 train_dict["loss"],
                                 eval_dict["soc_loss"],
-                                eval_dict["transition_state_ratio"],
+                                eval_dict.get("num_minima", 0),
                                 eval_dict["num_transition_states"],
                                 len(eval_dict["frequency_analyses"]),
+                                eval_dict["transition_state_ratio"],
                             )
                         )
                     except Exception as e:  # noqa: F841

@@ -32,8 +32,8 @@ lr_schedule: null
  
 buffer_size: 20
 
-# min_energy: -2085
-# max_energy: -2065
+min_energy: null
+max_energy: null
 
 visualize_conformations: True
 compute_coverage: False

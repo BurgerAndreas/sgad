@@ -158,19 +158,19 @@ def visualize_conformations(graph_state, outputs, atomic_number_table, n_samples
         mols.append(mol)
         smis.append(smi)
 
-    try:
-        legends = [
-            smi + "\n\n reg energy:{:.2f}".format(outputs["reg_energy"][j])
-            for j, smi in enumerate(smis)
-        ]
-    except TypeError:
-        legends = [smi + "\n\n reg energy: NA" for j, smi in enumerate(smis)]
+    # try:
+    #     legends = [
+    #         smi + "\n\n reg energy:{:.2f}".format(outputs["reg_energy"][j])
+    #         for j, smi in enumerate(smis)
+    #     ]
+    # except TypeError:
+    #     legends = [smi + "\n\n reg energy: NA" for j, smi in enumerate(smis)]
 
     img = Draw.MolsToGridImage(
         mols,
         molsPerRow=4,
         subImgSize=(200, 200),
-        legends=legends,
+        # legends=legends,
     )
     img.save("rdkit_vis.png")
 

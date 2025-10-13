@@ -144,7 +144,7 @@ class HIPGADEnergy(torch.nn.Module):
 
         hessian = out["hessian"].detach().reshape(B, 3 * N, 3 * N)
 
-        output_dict["energy_physical"] = energy.detach()
+        output_dict["energy"] = energy.detach()
 
         # Forces shape: [n_atoms, 3]
         forces = forces.detach().reshape(B, N*3)

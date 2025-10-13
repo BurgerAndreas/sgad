@@ -68,6 +68,7 @@ def evaluation(
     soc_loss = 0.0
     num_neg_freqs = []
     num_transition_states = 0  # Count molecules with exactly 1 negative frequency
+    num_minima = 0  # Count molecules with 0 negative frequencies (minima)
     all_frequency_analyses = []
 
     for batch in eval_sample_loader:
@@ -112,6 +113,9 @@ def evaluation(
             # Count transition states (exactly 1 negative frequency)
             if neg_freq_count == 1:
                 num_transition_states += 1
+            # Count minima (no negative frequencies)
+            if neg_freq_count == 0:
+                num_minima += 1
 
     soc_loss = (soc_loss / cfg.num_eval_samples).detach().cpu().item()
 
@@ -145,6 +149,7 @@ def evaluation(
         "max_neg_freqs": max_neg_freqs,
         "min_neg_freqs": min_neg_freqs,
         "num_transition_states": num_transition_states,
+        "num_minima": num_minima,
         "transition_state_ratio": transition_state_ratio,
         "frequency_analyses": all_frequency_analyses,
     }
