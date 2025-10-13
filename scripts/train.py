@@ -203,8 +203,10 @@ def main(cfg):
             controlled = not (epoch == start_epoch)
             # if we are resuming training, should we reinitialize the buffer randomly like this?
             # TODO@Andreas: add an option to fill the buffer with T1x structures without doing bridge matching
-            if (epoch < cfg.pretrain_epochs) or epoch < cfg.prefill_epochs:
-                mode = "pretrain"
+            pretrain = (epoch < cfg.pretrain_epochs) 
+            prefill = (epoch < cfg.prefill_epochs)
+            if pretrain or prefill:
+                mode = "pretrain" if pretrain else "prefill"
                 # during pretraining, we use T1x molecular structures directly
                 buffer.add(
                     *populate_buffer_with_samples_and_energy_gradients(
@@ -217,8 +219,7 @@ def main(cfg):
                         duplicates=cfg.duplicates,
                         nfe=cfg.train_nfe,
                         controlled=False,  
-                        # prefill = use T1x structures directly without SDE
-                        random=epoch < cfg.pretrain_epochs, 
+                        random=False, 
                         discretization_scheme=cfg.discretization_scheme,
                     )
                 )
@@ -236,6 +237,8 @@ def main(cfg):
                         duplicates=cfg.duplicates,
                         nfe=cfg.train_nfe,
                         controlled=controlled,
+                        # on the first epoch we will use random structures instead of SDE
+                        random=not controlled,
                         discretization_scheme=cfg.discretization_scheme,
                     )
                 )
@@ -251,7 +254,7 @@ def main(cfg):
                 lr_schedule=lr_schedule,
                 device=device,
                 cfg=cfg,
-                pretrain_mode=(epoch < cfg.pretrain_epochs),
+                pretrain_mode=pretrain,
             )
             if distributed_mode.is_main_process():
                 try:

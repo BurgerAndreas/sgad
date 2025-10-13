@@ -46,6 +46,7 @@ alpha : 100.0
 
 # Set these flags for pretraining on RDKIT samples with bridge matching
 pretrain_epochs: 0
+# if to use only bridge matching for pretraining, or adjoint sampling + bridge matching
 BM_only_pretrain: True
 warmup_period: 50
 
