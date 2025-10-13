@@ -12,3 +12,9 @@ batch_size: 2
 train_nfe: 500
 eval_nfe: 500
 num_eval_samples: 1024
+
+dataset:
+  datapath: /ssd/Code/Datastore/transition1x.h5
+
+energy:
+  model_ckpt: /ssd/Code/hip/ckpt/hesspred_v1.ckpt

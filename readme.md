@@ -18,7 +18,7 @@ uv pip install torch-scatter -f https://data.pyg.org/whl/torch-2.7.0+cu126.html
 uv pip install torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu126.html
 uv pip install torch-geometric
 
-uv pip install -r requirements.txt
+uv pip install --no-cache -r requirements.txt
 ```
 
 
