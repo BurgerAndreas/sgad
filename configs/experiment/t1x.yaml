@@ -3,7 +3,7 @@
 defaults:
   - override /controller: egnn
   - override /noise_schedule: geometric
-  - override /energy: hip_  energy
+  - override /energy: hip_energy
   - override /dataset: t1x_dataset
 
 noise_schedule:
