@@ -11,6 +11,7 @@ from pathlib import Path
 import sgad.utils.distributed_mode as distributed_mode
 import hydra
 import numpy as np
+import yaml
 
 import pytorch_warmup as warmup
 import torch
@@ -53,11 +54,11 @@ def main(cfg):
                 )
             )
 
-        print(dict(os.environ))
+        # print("os.environ:\n", dict(os.environ))
         distributed_mode.init_distributed_mode(cfg)
 
         print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
-        print(str(cfg))
+        print("\ncfg:\n", yaml.dump(cfg))
         if distributed_mode.is_main_process():
             args_filepath = Path("cfg.yaml")
             print(f"Saving cfg to {args_filepath}")
