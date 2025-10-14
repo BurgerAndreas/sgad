@@ -1,10 +1,10 @@
 # @package _global_
 
 defaults:
-  - override /controller: egnn
-  - override /noise_schedule: geometric
+  # - override /controller: egnn
+  # - override /noise_schedule: geometric
   - override /energy: hip_energy
-  - override /dataset: t1x_dataset
+  # - override /dataset: t1x_dataset
 
 noise_schedule:
   sigma_min: 1e-3
@@ -21,6 +21,8 @@ batch_size: 64
 # batch_size should be divisible by duplicates if you want the expected batch_size
 # duplicates: 8
 num_samples_per_epoch: 128
+
+num_batches_per_epoch: 100
 
 max_score_norm: 150.0
 discretization_scheme: ql

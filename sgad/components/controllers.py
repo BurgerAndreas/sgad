@@ -74,12 +74,12 @@ class EGNN_dynamics(nn.Module):
     ):
         """
         uniform=True: Use no chemistry-specific features.
-        Node features: a single scalar per node (the time 
+        Node features: a single scalar per node (the time
         t
         t).
         Edge features: only the squared distance.
         uniform=False: Use chemistry-aware features.
-        Node features: one-hot atom type concatenated with the time 
+        Node features: one-hot atom type concatenated with the time
         t
         t.
         Edge features: bond-type one-hot concatenated with the squared distance

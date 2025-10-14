@@ -75,6 +75,7 @@ def ase_atoms_to_torch_geometric(atoms):
     data = TGData(
         pos=torch.tensor(positions, dtype=torch.float32),
         z=torch.tensor(atomic_nums, dtype=torch.int64),
+        atomic_numbers=torch.tensor(atomic_nums, dtype=torch.int64),
         charges=torch.tensor(atomic_nums, dtype=torch.int64),
         natoms=torch.tensor([len(atomic_nums)], dtype=torch.int64),
         cell=torch.tensor(atoms.get_cell().astype(np.float32), dtype=torch.float32),
@@ -105,6 +106,7 @@ def coord_atoms_to_torch_geometric(
     data = TGData(
         pos=torch.as_tensor(coords, dtype=torch.float32).reshape(-1, 3),
         z=torch.as_tensor(atomic_nums, dtype=torch.int64),
+        atomic_numbers=torch.as_tensor(atomic_nums, dtype=torch.int64),
         charges=torch.as_tensor(atomic_nums, dtype=torch.int64),
         natoms=torch.tensor([len(atomic_nums)], dtype=torch.int64),
         cell=None,

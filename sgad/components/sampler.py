@@ -3,7 +3,7 @@
 from typing import Optional, Iterable, List, Tuple, Dict, Any, Callable
 
 import torch
-
+from tqdm import tqdm
 import torch_geometric
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -296,7 +296,7 @@ def sample_from_loader(
     loader = iter(cycle(sample_loader))
     duplicates = min(batch_size, duplicates)
     n_systems = int(batch_size // duplicates)
-    for i in range(n_batches):
+    for i in tqdm(range(n_batches), desc="Sampling from loader"):
         batch = data_to_graph_batch(
             loader, duplicates, n_systems, float_dtype=float_dtype
         ).to(device)
@@ -374,10 +374,10 @@ def populate_buffer_with_samples_and_energy_gradients(
         float_dtype=float_dtype,
         discretization_scheme=discretization_scheme,
     )
-    with torch.enable_grad(): # TODO@Andreas: why do we need to enable grad here?
+    with torch.enable_grad():  # TODO@Andreas: why do we need to enable grad here?
         grad_list = []
         for graph_state in graph_state_list:
             F = energy_model(graph_state)
-            grad_dict = {"energy_grad": -F["forces"]} # , "reg_grad": -F["reg_forces"]
+            grad_dict = {"energy_grad": -F["forces"]}  # , "reg_grad": -F["reg_forces"]
             grad_list.append(grad_dict)
     return graph_state_list, grad_list

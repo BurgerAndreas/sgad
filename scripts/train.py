@@ -68,9 +68,12 @@ def main(cfg):
                 print(json.dumps(dict(os.environ)), file=fout)
 
             # Initialize Weights & Biases
-            wandb.init(project=getattr(cfg, "wandb_project", "sgad"),
-                        name=getattr(cfg, "wandb_run_name", None),
-                        config=OmegaConf.to_container(cfg, resolve=True))
+            if cfg.use_wandb:
+                wandb.init(
+                    project=getattr(cfg, "wandb_project", "sgad"),
+                    name=getattr(cfg, "wandb_run_name", None),
+                    config=OmegaConf.to_container(cfg, resolve=True),
+                )
 
         device = cfg.device  # "cuda"
 
@@ -99,6 +102,7 @@ def main(cfg):
         # Check for existing checkpoints
         checkpoint_path = os.path.join(checkpoint_dir, "checkpoint_latest.pt")
         start_epoch = 0
+        global_step = 0
 
         # checkpoint_path = str(Path(os.getcwd()).parent.parent.parent / "2025.01.09" / "024615" / "0" / "checkpoints" / "checkpoint_latest.pt")
         checkpoint = None
@@ -108,6 +112,7 @@ def main(cfg):
             checkpoint = torch.load(checkpoint_path)  # , map_location=map_location)
             controller.load_state_dict(checkpoint["controller_state_dict"])
             start_epoch = checkpoint["epoch"] + 1
+            global_step = checkpoint["global_step"] + 1
         else:
             if cfg.init_model is not None:
                 print(f"Loading initial weights from {cfg.init_model}")
@@ -196,7 +201,7 @@ def main(cfg):
         clipper = Clipper(cfg.clip_scores, cfg.max_score_norm)
 
         print(f"Starting from {cfg.start_epoch}/{cfg.num_epochs} epochs")
-        pbar = tqdm(range(start_epoch, cfg.num_epochs))
+        pbar = tqdm(range(start_epoch, cfg.num_epochs), desc="Epochs")
         for epoch in pbar:
             n_batches = (
                 n_init_batches if (epoch == start_epoch) else n_batches_per_epoch
@@ -204,8 +209,8 @@ def main(cfg):
             controlled = not (epoch == start_epoch)
             # if we are resuming training, should we reinitialize the buffer randomly like this?
             # TODO@Andreas: add an option to fill the buffer with T1x structures without doing bridge matching
-            pretrain = (epoch < cfg.pretrain_epochs) 
-            prefill = (epoch < cfg.prefill_epochs)
+            pretrain = epoch < cfg.pretrain_epochs
+            prefill = epoch < cfg.prefill_epochs
             if pretrain or prefill:
                 mode = "pretrain" if pretrain else "prefill"
                 # during pretraining, we use T1x molecular structures directly
@@ -219,8 +224,8 @@ def main(cfg):
                         device=device,
                         duplicates=cfg.duplicates,
                         nfe=cfg.train_nfe,
-                        controlled=False,  
-                        random=False, 
+                        controlled=False,
+                        random=False,
                         discretization_scheme=cfg.discretization_scheme,
                     )
                 )
@@ -256,15 +261,22 @@ def main(cfg):
                 device=device,
                 cfg=cfg,
                 pretrain_mode=pretrain,
+                global_step=global_step,
             )
+            global_step = train_dict.pop("global_step")
             if distributed_mode.is_main_process():
                 try:
                     current_lr = optimizer.param_groups[0]["lr"]
-                    wandb.log({
-                        "epoch": epoch,
-                        "train/loss": train_dict["loss"],
-                        "train/lr": current_lr,
-                    }, step=epoch)
+                    if cfg.use_wandb:
+                        wandb.log(
+                            {
+                                "epoch": epoch,
+                                "train/loss": train_dict["loss"],
+                                "train/lr": current_lr,
+                                "train_time": train_dict.pop("train_time"),
+                            },
+                            step=global_step,
+                        )
                 except Exception:
                     pass
             if epoch % cfg.eval_freq == 0 or epoch == cfg.num_epochs - 1:
@@ -275,10 +287,11 @@ def main(cfg):
                             energy_model=energy_model,
                             eval_sample_loader=eval_sample_loader,
                             noise_schedule=noise_schedule,
-                            atomic_numbers=energy_model.atomic_numbers,
+                            atomic_numbers_allowed=energy_model.atomic_numbers,
                             rank=global_rank,
                             device=device,
                             cfg=cfg,
+                            global_step=global_step,
                         )
                         eval_dict["energy_vis"].save("test_im.png")
                         # Log validation metrics to Weights & Biases
@@ -286,17 +299,33 @@ def main(cfg):
                             log_payload = {
                                 "epoch": epoch,
                                 "eval/soc_loss": eval_dict["soc_loss"],
-                                "eval/avg_neg_freqs": eval_dict.get("avg_neg_freqs", 0.0),
-                                "eval/max_neg_freqs": eval_dict.get("max_neg_freqs", 0.0),
-                                "eval/min_neg_freqs": eval_dict.get("min_neg_freqs", 0.0),
+                                "eval/avg_neg_freqs": eval_dict.get(
+                                    "avg_neg_freqs", 0.0
+                                ),
+                                "eval/max_neg_freqs": eval_dict.get(
+                                    "max_neg_freqs", 0.0
+                                ),
+                                "eval/min_neg_freqs": eval_dict.get(
+                                    "min_neg_freqs", 0.0
+                                ),
                                 "eval/num_minima": eval_dict.get("num_minima", 0),
-                                "eval/num_transition_states": eval_dict.get("num_transition_states", 0),
-                                "eval/transition_state_ratio": eval_dict.get("transition_state_ratio", 0.0),
+                                "eval/num_transition_states": eval_dict.get(
+                                    "num_transition_states", 0
+                                ),
+                                "eval/transition_state_ratio": eval_dict.get(
+                                    "transition_state_ratio", 0.0
+                                ),
+                                "eval_time": eval_dict.pop("eval_time"),
                             }
-                            wandb.log(log_payload, step=epoch)
+                            if cfg.use_wandb:
+                                wandb.log(log_payload, step=global_step)
                             # Optionally log visualization image
                             try:
-                                wandb.log({"eval/energy_vis": wandb.Image("test_im.png")}, step=epoch)
+                                if cfg.use_wandb:
+                                    wandb.log(
+                                        {"eval/energy_vis": wandb.Image("test_im.png")},
+                                        step=global_step,
+                                    )
                             except Exception:
                                 pass
                         except Exception:
@@ -307,12 +336,14 @@ def main(cfg):
                                 "controller_state_dict": controller.module.state_dict(),
                                 "optimizer_state_dict": optimizer.state_dict(),
                                 "epoch": epoch,
+                                "global_step": global_step,
                             }
                         else:
                             state = {
                                 "controller_state_dict": controller.state_dict(),
                                 "optimizer_state_dict": optimizer.state_dict(),
                                 "epoch": epoch,
+                                "global_step": global_step,
                             }
                         torch.save(state, "checkpoints/checkpoint_{}.pt".format(epoch))
                         torch.save(state, "checkpoints/checkpoint_latest.pt")

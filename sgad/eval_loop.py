@@ -1,5 +1,6 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
+import time
 import torch
 
 from hip.frequency_analysis import analyze_frequencies_torch
@@ -58,11 +59,13 @@ def evaluation(
     energy_model,
     eval_sample_loader,
     noise_schedule,
-    atomic_numbers,
+    atomic_numbers_allowed,
     rank,
     device,
     cfg,
+    global_step,
 ):
+    start_time = time.time()
     states = []
     outputs = []
     soc_loss = 0.0
@@ -71,6 +74,7 @@ def evaluation(
     num_minima = 0  # Count molecules with 0 negative frequencies (minima)
     all_frequency_analyses = []
 
+    print(f"Evaluation at global step: {global_step}")
     for batch in eval_sample_loader:
         batch = batch.to(device)
         graph_state, controls = integrate_sde(
@@ -86,7 +90,8 @@ def evaluation(
         # Perform frequency analysis for each molecule in the batch
         batch_ptr = graph_state["ptr"]
         positions = graph_state["pos"]
-        atomic_nums = graph_state["node_attrs"].argmax(dim=-1)
+        # atomic_nums = graph_state["node_attrs"].argmax(dim=-1)
+        atomic_nums = graph_state["z"]
 
         for i in range(len(batch_ptr) - 1):
             start_idx = batch_ptr[i]
@@ -140,7 +145,9 @@ def evaluation(
     )
 
     if cfg.visualize_conformations:
-        visualize_conformations(states[0], outputs[0], atomic_numbers, n_samples=16)
+        visualize_conformations(
+            states[0], outputs[0], atomic_numbers_allowed, n_samples=16
+        )
 
     return {
         "soc_loss": soc_loss,
@@ -152,4 +159,5 @@ def evaluation(
         "num_minima": num_minima,
         "transition_state_ratio": transition_state_ratio,
         "frequency_analyses": all_frequency_analyses,
+        "eval_time": time.time() - start_time,
     }

@@ -75,6 +75,8 @@ overfit_single_sample: True
 
 version: 1
 
+use_wandb: True
+
 hydra:
   run:
     dir: ./results/local/${now:%Y.%m.%d}/${now:%H%M%S}

@@ -16,16 +16,13 @@ def adjoint_score_target_torsion(grad_E, clipper):
 def adjoint_score_target(
     graph_state_1, grad_E, noise_schedule, clipper, no_pbase=False
 ):
-    sigma_1 = noise_schedule.h(
-        torch.Tensor([1.0]).to(graph_state_1["pos"].device)
-    )
+    sigma_1 = noise_schedule.h(torch.Tensor([1.0]).to(graph_state_1["pos"].device))
     x1 = graph_state_1["pos"]
     if no_pbase:
         adjoint_state = grad_E["energy_grad"].to(graph_state_1["pos"].device)
     else:
         adjoint_state = (
-            grad_E["energy_grad"].to(graph_state_1["pos"].device)
-            - 1 / sigma_1**2 * x1
+            grad_E["energy_grad"].to(graph_state_1["pos"].device) - 1 / sigma_1**2 * x1
         )
     adjoint_state = clipper.clip_scores(adjoint_state)
     # adjoint_state = adjoint_state + clipper.clip_scores(

@@ -21,7 +21,5 @@ def get_random_torsions(graph0):
         graph_state["n_torsions"].max().item(),
         graph_state["tor_per_mol_label"],
     )
-    graph_state["pos"] = subtract_com_batch(
-        graph_state["pos"], graph_state["batch"]
-    )
+    graph_state["pos"] = subtract_com_batch(graph_state["pos"], graph_state["batch"])
     return graph_state

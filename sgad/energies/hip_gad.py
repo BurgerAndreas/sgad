@@ -106,9 +106,7 @@ class HIPGADEnergy(torch.nn.Module):
         self.device = device
 
         # Set atomic numbers for compatibility with existing code
-        self.atomic_numbers = torch.tensor(
-            [1, 6, 7, 8], dtype=torch.long
-        )
+        self.atomic_numbers = torch.tensor([1, 6, 7, 8], dtype=torch.long)
 
     def __call__(
         self,
@@ -140,24 +138,24 @@ class HIPGADEnergy(torch.nn.Module):
         )
 
         B = batch.batch.max() + 1
-        N = batch.natoms.max() 
+        N = batch.natoms.max()
 
         hessian = out["hessian"].detach().reshape(B, 3 * N, 3 * N)
 
         output_dict["energy"] = energy.detach()
 
         # Forces shape: [n_atoms, 3]
-        forces = forces.detach().reshape(B, N*3)
+        forces = forces.detach().reshape(B, N * 3)
 
         eigenvalues, eigenvectors = torch.linalg.eigh(hessian)
         v = eigenvectors[:, 0]  # [B, 3*N]
         assert v.shape == (B, 3 * N), f"v.shape: {v.shape}, expected: (B, 3*N)"
-        dotprod = torch.einsum("bi,bi->b", -forces, v) # [B]
-        dotprod = dotprod.unsqueeze(-1) # [B, 1]
+        dotprod = torch.einsum("bi,bi->b", -forces, v)  # [B]
+        dotprod = dotprod.unsqueeze(-1)  # [B, 1]
         # -∇V(x) + 2(∇V, v(x))v(x)
-        gad = forces + 2 * dotprod * v # [B, 3*N]
-        output_dict["gad"] = gad.reshape(B*N, 3)
-        output_dict["forces_physical"] = forces.reshape(B*N, 3)
+        gad = forces + 2 * dotprod * v  # [B, 3*N]
+        output_dict["gad"] = gad.reshape(B * N, 3)
+        output_dict["forces_physical"] = forces.reshape(B * N, 3)
 
         # Apply temperature scaling to forces
         output_dict["forces"] = output_dict["gad"] / self.tau

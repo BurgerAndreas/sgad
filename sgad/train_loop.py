@@ -1,17 +1,18 @@
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 
 from typing import Dict, Any, Optional
-
+import time
+from tqdm import tqdm
 import torch
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from torchmetrics.aggregation import MeanMetric
 
+import wandb
+
 from sgad.components.soc import (
     adjoint_score_target,
-    adjoint_score_target_torsion,
 )
-from sgad.sampletorsion.torsion import check_torsions
 
 from sgad.utils.data_utils import cycle
 
@@ -40,6 +41,7 @@ def train_one_epoch(
     device: torch.device,
     cfg: Any,
     pretrain_mode: bool = False,
+    global_step: int = 0,
 ) -> Dict[str, float]:
     """Train the model for one epoch using score matching loss.
 
@@ -62,6 +64,7 @@ def train_one_epoch(
     Returns:
         Dictionary containing the average loss for the epoch
     """
+    start_time = time.time()
     # Set model to training mode
     controller.train(True)
     # Initialize metric to track epoch loss
@@ -69,7 +72,7 @@ def train_one_epoch(
     # Create infinite iterator over training data
     loader = iter(cycle(train_dataloader))
 
-    for i in range(cfg.num_batches_per_epoch):
+    for i in tqdm(range(cfg.num_batches_per_epoch), desc="Training"):
         optimizer.zero_grad()
 
         # Get batch of clean structures (t=1) and their energy gradients
@@ -119,9 +122,7 @@ def train_one_epoch(
             bridgematching_loss = (
                 (
                     predicted_score
-                    - 1
-                    / alpha_t.pow(2)
-                    * (graph_state_1["pos"] - graph_state_t["pos"])
+                    - 1 / alpha_t.pow(2) * (graph_state_1["pos"] - graph_state_t["pos"])
                 )
                 .pow(2)
                 .sum(-1)
@@ -145,4 +146,20 @@ def train_one_epoch(
             if lr_schedule:
                 lr_schedule.step()
 
-    return {"loss": float(epoch_loss.compute().detach().cpu())}
+        if cfg.use_wandb:
+            wandb.log(
+                {
+                    "train/loss": loss.item(),
+                    "train/lr": get_lr(optimizer),
+                    "train/adjoint_loss": adjoint_loss.item(),
+                    "train/bridgematching_loss": bridgematching_loss.item(),
+                },
+                step=global_step,
+            )
+            global_step += 1
+
+    return {
+        "loss": float(epoch_loss.compute().detach().cpu()),
+        "global_step": global_step,
+        "train_time": time.time() - start_time,
+    }

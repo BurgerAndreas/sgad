@@ -224,9 +224,7 @@ class LinearTorsionNoiseSchedule(LinearNoiseSchedule):
             graph_t["n_torsions"].max().item(),
             graph_t["tor_per_mol_label"],
         )
-        graph_t["pos"] = subtract_com_batch(
-            graph_t["pos"], graph_t["batch"]
-        )
+        graph_t["pos"] = subtract_com_batch(graph_t["pos"], graph_t["batch"])
         graph_t["torsions"] = tort
 
         return graph_t
@@ -281,9 +279,7 @@ class GeometricTorsionNoiseSchedule(GeometricNoiseSchedule):
             graph_t["n_torsions"].max().item(),
             graph_t["tor_per_mol_label"],
         )
-        graph_t["pos"] = subtract_com_batch(
-            graph_t["pos"], graph_t["batch"]
-        )
+        graph_t["pos"] = subtract_com_batch(graph_t["pos"], graph_t["batch"])
         graph_t["torsions"] = tort
 
         return graph_t

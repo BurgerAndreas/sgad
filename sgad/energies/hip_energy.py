@@ -106,9 +106,7 @@ class HIPEnergy(torch.nn.Module):
         self.device = device
 
         # Set atomic numbers for compatibility with existing code
-        self.atomic_numbers = torch.tensor(
-            [1, 6, 7, 8], dtype=torch.long
-        )
+        self.atomic_numbers = torch.tensor([1, 6, 7, 8], dtype=torch.long)
 
     def __call__(
         self,
@@ -140,7 +138,7 @@ class HIPEnergy(torch.nn.Module):
         )
 
         B = batch.batch.max() + 1
-        N = batch.natoms.max() 
+        N = batch.natoms.max()
 
         hessian = out["hessian"].detach().reshape(B, 3 * N, 3 * N)
 
@@ -148,7 +146,7 @@ class HIPEnergy(torch.nn.Module):
         output_dict["energy"] = energy.detach()
 
         # Forces shape: [n_atoms, 3]
-        forces = forces.detach().reshape(B, N*3)
+        forces = forces.detach().reshape(B * N, 3)
 
         # Apply temperature scaling to forces
         output_dict["forces"] = forces / self.tau

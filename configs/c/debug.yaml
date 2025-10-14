@@ -13,6 +13,8 @@ train_nfe: 500
 eval_nfe: 500
 num_eval_samples: 1024
 
+use_wandb: False
+
 dataset:
   datapath: /ssd/Code/Datastore/transition1x.h5
 

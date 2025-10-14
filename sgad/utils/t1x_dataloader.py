@@ -138,9 +138,9 @@ def t1x_generator(formula, rxn, grp):
     # Global element-to-index mapping (fixed width across dataset)
     z_table = {z: i for i, z in enumerate(sorted(REFERENCE_ENERGIES.keys()))}
     indices = torch.tensor([z_table[z] for z in atomic_numbers], dtype=torch.long)
-    node_attrs = torch.nn.functional.one_hot(
-        indices, num_classes=len(z_table)
-    ).to(torch.get_default_dtype())
+    node_attrs = torch.nn.functional.one_hot(indices, num_classes=len(z_table)).to(
+        torch.get_default_dtype()
+    )
     edge_attrs = torch.zeros(n_edges, 2, dtype=torch.long)
 
     for energy, force, positions in zip(energies, forces, positions):
@@ -157,6 +157,7 @@ def t1x_generator(formula, rxn, grp):
         data = TGData(
             pos=torch.as_tensor(positions, dtype=torch.float32).reshape(-1, 3),
             z=torch.as_tensor(atomic_numbers, dtype=torch.int64),
+            atomic_numbers=torch.as_tensor(atomic_numbers, dtype=torch.int64),
             charges=torch.as_tensor(atomic_numbers, dtype=torch.int64),
             natoms=torch.tensor([len(atomic_numbers)], dtype=torch.int64),
             # Graph fields expected by controllers/energies
