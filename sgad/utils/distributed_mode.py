@@ -53,10 +53,10 @@ def is_main_process():
 
 
 def get_shared_folder(shared_dir: str) -> Path:
-    user = os.getenv("USER")
+    # user = os.getenv("USER")
     if Path(shared_dir).is_dir():
-        p = Path(shared_dir) / user / "distributed"
-        p.mkdir(exist_ok=True)
+        p = Path(shared_dir) / "distributed"
+        p.mkdir(parents=True, exist_ok=True)
         return p
     raise RuntimeError("No shared folder available")
 
