@@ -23,8 +23,8 @@ ruff
 pydantic==2.11.4
 # Progress and utilities
 tqdm
-progressbar==2.5
-# Machine learning
+#progressbar
+# machine learning
 einops
 torchmetrics
 pytorch_warmup
