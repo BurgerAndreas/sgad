@@ -79,8 +79,8 @@ def init_distributed_mode(cfg):
             "SLURM_PROCID" in os.environ and os.environ["SLURM_JOB_NAME"] != "bash"
         ):  # Exclude interactive shells
             cfg.rank = int(os.environ["SLURM_PROCID"])
-            cfg.world_size = int(os.environ["SLURM_GPUS_PER_NODE"]) * int(
-                os.environ["SLURM_JOB_NUM_NODES"]
+            cfg.world_size = int(os.environ.get("SLURM_GPUS_PER_NODE", 1)) * int(
+                os.environ.get("SLURM_JOB_NUM_NODES", 1)
             )
             cfg.gpu = cfg.rank % torch.cuda.device_count()
             cfg.dist_url = get_init_file(cfg.shared_dir).as_uri()
