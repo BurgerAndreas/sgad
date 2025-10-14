@@ -58,7 +58,7 @@ def main(cfg):
         distributed_mode.init_distributed_mode(cfg)
 
         print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
-        print("\ncfg:\n", yaml.dump(cfg))
+        # print("\ncfg:\n", yaml.dump(cfg))
         if distributed_mode.is_main_process():
             args_filepath = Path("cfg.yaml")
             print(f"Saving cfg to {args_filepath}")
