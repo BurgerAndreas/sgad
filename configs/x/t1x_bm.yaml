@@ -1,10 +1,13 @@
 # @package _global_
 
+# https://github.com/facebookresearch/adjoint_sampling/blob/main/configs/experiment/spice_cartesian_pretrain_for_bmam.yaml
+
 defaults:
-  # - override /controller: egnn
-  # - override /noise_schedule: geometric
+  - override /controller: egnn
+  - override /noise_schedule: geometric
   - override /energy: hip_energy
-  # - override /dataset: t1x_dataset
+  - override /dataset: t1x_dataset
+  - _self_
 
 noise_schedule:
   sigma_min: 1e-3
@@ -15,7 +18,7 @@ controller:
   hidden_nf: 128
   n_layers: 12
 
-num_epochs: 1000 # 5000
+num_epochs: 2000 # 5000
 batch_size: 64
 # duplicate the same molecule type conditioning in the same batch.
 # batch_size should be divisible by duplicates if you want the expected batch_size
@@ -32,12 +35,18 @@ num_init_samples: 256 # 1024
 num_eval_samples: 128
 eval_batch_size: 64
 
+train_nfe: 1000
+eval_nfe: 1000
+
 buffer_size: 256 # 1000
 
 amortized: true
 
+min_energy: null
+max_energy: null
+
 # pretraining
-pretrain_epochs: 100
+pretrain_epochs: 2000
 # train with adjoint sampling, but populate buffer with T1x structures instead of random or SDE samples
 prefill_epochs: 0
 scale_bridgematching_loss: True
@@ -48,7 +57,7 @@ bridgematching_loss_weight: 0.0 # only matters if BM_only_pretrain is False
 # min_energy: -25
 # max_energy: 25
 
-tau : 5e-3
+tau : 5e-3 # temperature of energy gradient (force)
 alpha : 100.0
 
 dataset:
