@@ -218,6 +218,7 @@ def evaluation(
     Im = get_dataset_fig(
         states[0], outputs[0]["energy"], cfg, outputs=conformer_outputs
     )
+    Im.save("test_im.png")
 
     if cfg.visualize_conformations:
         visualize_conformations(
@@ -226,7 +227,6 @@ def evaluation(
 
     return {
         "soc_loss": soc_loss,
-        "energy_vis": Im,
         # "avg_neg_freqs": avg_neg_freqs,
         # "max_neg_freqs": max_neg_freqs,
         # "min_neg_freqs": min_neg_freqs,

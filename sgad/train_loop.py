@@ -72,7 +72,7 @@ def train_one_epoch(
     # Create infinite iterator over training data
     loader = iter(cycle(train_dataloader))
 
-    for i in tqdm(range(cfg.num_batches_per_epoch), desc="Training"):
+    for i in tqdm(range(cfg.num_batches_per_epoch), desc="Epoch"):
         optimizer.zero_grad()
 
         # Get batch of clean structures (t=1) and their energy gradients
@@ -156,7 +156,7 @@ def train_one_epoch(
                 },
                 step=global_step,
             )
-            global_step += 1
+        global_step += 1
 
     return {
         "loss": float(epoch_loss.compute().detach().cpu()),

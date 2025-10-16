@@ -207,7 +207,7 @@ def main(cfg):
         clipper = Clipper(cfg.clip_scores, cfg.max_score_norm)
 
         print(f"Starting from {cfg.start_epoch}/{cfg.num_epochs} epochs")
-        pbar = tqdm(range(start_epoch, cfg.num_epochs), desc="Epochs")
+        pbar = tqdm(range(start_epoch, cfg.num_epochs), desc="Training")
         for epoch in pbar:
             n_batches = (
                 n_init_batches if (epoch == start_epoch) else n_batches_per_epoch
@@ -299,29 +299,10 @@ def main(cfg):
                             cfg=cfg,
                             global_step=global_step,
                         )
-                        eval_dict["energy_vis"].save("test_im.png")
                         # Log validation metrics to Weights & Biases
                         try:
                             log_payload = {
-                                "epoch": epoch,
-                                "eval/soc_loss": eval_dict["soc_loss"],
-                                "eval/avg_neg_freqs": eval_dict.get(
-                                    "avg_neg_freqs", 0.0
-                                ),
-                                "eval/max_neg_freqs": eval_dict.get(
-                                    "max_neg_freqs", 0.0
-                                ),
-                                "eval/min_neg_freqs": eval_dict.get(
-                                    "min_neg_freqs", 0.0
-                                ),
-                                "eval/num_minima": eval_dict.get("num_minima", 0),
-                                "eval/num_transition_states": eval_dict.get(
-                                    "num_transition_states", 0
-                                ),
-                                "eval/transition_state_ratio": eval_dict.get(
-                                    "transition_state_ratio", 0.0
-                                ),
-                                "eval_time": eval_dict.pop("eval_time"),
+                                f"eval/{k}": v for k, v in eval_dict.items()
                             }
                             if cfg.use_wandb:
                                 wandb.log(log_payload, step=global_step)
@@ -355,15 +336,7 @@ def main(cfg):
                         torch.save(state, "checkpoints/checkpoint_{}.pt".format(epoch))
                         torch.save(state, "checkpoints/checkpoint_latest.pt")
                         pbar.set_description(
-                            "mode: {}, train loss: {:.2f}, eval soc loss: {:.2f}, minima: {}, TS (idx-1): {} / {}, TS ratio: {:.2f}".format(
-                                mode,
-                                train_dict["loss"],
-                                eval_dict["soc_loss"],
-                                eval_dict.get("num_minima", 0),
-                                eval_dict["num_transition_states"],
-                                len(eval_dict["frequency_analyses"]),
-                                eval_dict["transition_state_ratio"],
-                            )
+                            f"mode: {mode}, train loss: {train_dict['loss']:.2f}, eval soc loss: {eval_dict['soc_loss']:.2f}, minima: {eval_dict['num_minima']}, TS (idx-1): {eval_dict['num_transition_states']}"
                         )
                     except Exception as e:  # noqa: F841
                         # Log exception but don't stop training.
