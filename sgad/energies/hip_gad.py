@@ -155,9 +155,9 @@ class HIPGADEnergy(torch.nn.Module):
         # -∇V(x) + 2(∇V, v(x))v(x)
         gad = forces + 2 * dotprod * v  # [B, 3*N]
         output_dict["gad"] = gad.reshape(B * N, 3)
-        output_dict["forces_physical"] = forces.reshape(B * N, 3)
+        output_dict["forces"] = forces.reshape(B * N, 3)
 
         # Apply temperature scaling to forces
-        output_dict["forces"] = output_dict["gad"] / self.tau
+        output_dict["energy_grad"] = output_dict["gad"] / self.tau
 
         return output_dict

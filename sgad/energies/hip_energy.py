@@ -150,5 +150,6 @@ class HIPEnergy(torch.nn.Module):
 
         # Apply temperature scaling to forces
         output_dict["forces"] = forces / self.tau
+        output_dict["energy_grad"] = output_dict["forces"]
 
         return output_dict

@@ -11,7 +11,7 @@ from pathlib import Path
 import sgad.utils.distributed_mode as distributed_mode
 import hydra
 import numpy as np
-import yaml
+ 
 
 import pytorch_warmup as warmup
 import torch
@@ -69,9 +69,15 @@ def main(cfg):
 
             # Initialize Weights & Biases
             if cfg.use_wandb:
+                # Derive run name from energy target class name and pretrain flag
+                energy_target = OmegaConf.select(cfg, "energy._target_")
+                energy_class = (
+                    energy_target.split(".")[-1] if energy_target is not None else "run"
+                )
+                run_name = energy_class + ("-pretrain" if cfg.pretrain_epochs > 0 else "")
                 wandb.init(
                     project=getattr(cfg, "wandb_project", "sgad"),
-                    name=getattr(cfg, "wandb_run_name", None),
+                    name=run_name,
                     config=OmegaConf.to_container(cfg, resolve=True),
                 )
 
@@ -322,14 +328,15 @@ def main(cfg):
                             # Optionally log visualization image
                             try:
                                 if cfg.use_wandb:
+                                    wandb.log({"eval/conformations_vis": wandb.Image("rdkit_vis.png")}, step=global_step)
                                     wandb.log(
                                         {"eval/energy_vis": wandb.Image("test_im.png")},
                                         step=global_step,
                                     )
-                            except Exception:
-                                pass
-                        except Exception:
-                            pass
+                            except Exception as e:  # noqa: F841
+                                print(traceback.format_exc())
+                        except Exception as e:  # noqa: F841
+                            print(traceback.format_exc())
                         print("saving checkpoint ... ")
                         if cfg.distributed:
                             state = {

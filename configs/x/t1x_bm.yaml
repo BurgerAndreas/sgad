@@ -19,11 +19,11 @@ controller:
   n_layers: 12
 
 num_epochs: 2000 # 5000
-batch_size: 64
+batch_size: 256
 # duplicate the same molecule type conditioning in the same batch.
 # batch_size should be divisible by duplicates if you want the expected batch_size
 # duplicates: 8
-num_samples_per_epoch: 128
+num_samples_per_epoch: 256
 
 num_batches_per_epoch: 100
 
@@ -32,8 +32,8 @@ discretization_scheme: ql
 
 num_init_samples: 256 # 1024
 
-num_eval_samples: 128
-eval_batch_size: 64
+num_eval_samples: 256
+eval_batch_size: 256
 
 train_nfe: 1000
 eval_nfe: 1000
@@ -46,7 +46,7 @@ min_energy: null
 max_energy: null
 
 # pretraining
-pretrain_epochs: 2000
+pretrain_epochs: 10000
 # train with adjoint sampling, but populate buffer with T1x structures instead of random or SDE samples
 prefill_epochs: 0
 scale_bridgematching_loss: True

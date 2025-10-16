@@ -73,6 +73,10 @@ def evaluation(
     num_transition_states = 0  # Count molecules with exactly 1 negative frequency
     num_minima = 0  # Count molecules with 0 negative frequencies (minima)
     all_frequency_analyses = []
+    energy_values = []  # per-molecule energies
+    force_norm_values = []  # per-molecule mean force norms
+    energy_grad_norm_values = []  # per-molecule mean energy-gradient norms
+    eigvalprod_values = []  # optional per-batch or per-molecule scalar(s)
 
     print(f"Evaluation at global step: {global_step}")
     for batch in eval_sample_loader:
@@ -92,6 +96,25 @@ def evaluation(
         positions = graph_state["pos"]
         # atomic_nums = graph_state["node_attrs"].argmax(dim=-1)
         atomic_nums = graph_state["z"]
+        
+        # Collect per-molecule energy and force-norm statistics
+        forces = output["forces"]  # shape: (num_atoms_total, 3)
+        energy_grad = output.get("energy_grad", None)  # optional, same shape as forces
+        # Optionally collect eigvalprod if present (assumed scalar or 1D tensor)
+        if "eigvalprod" in output:
+            evp = output["eigvalprod"].detach().cpu().float().reshape(-1)
+            eigvalprod_values.extend(evp)
+        for i in range(len(batch_ptr) - 1):
+            start_idx = batch_ptr[i]
+            end_idx = batch_ptr[i + 1]
+            energy_values.append(output["energy"][i].detach().cpu())
+            mol_forces = forces[start_idx:end_idx]
+            mol_force_norm = mol_forces.norm(dim=1).mean()
+            force_norm_values.append(mol_force_norm.detach().cpu())
+            if energy_grad is not None:
+                mol_energy_grad = energy_grad[start_idx:end_idx]
+                mol_energy_grad_norm = mol_energy_grad.norm(dim=1).mean()
+                energy_grad_norm_values.append(mol_energy_grad_norm.detach().cpu())
 
         for i in range(len(batch_ptr) - 1):
             start_idx = batch_ptr[i]
@@ -101,11 +124,12 @@ def evaluation(
             mol_atomic_nums = atomic_nums[start_idx:end_idx]
 
             # Get hessian from energy model if available
-            if "hessian" in output:
-                hessian = output["hessian"][i]  # Assuming hessian is per-molecule
-            else:
-                # If no hessian available, skip frequency analysis for this molecule
-                continue
+            hessian = output["hessian"][i]  # Assuming hessian is per-molecule
+            # if "hessian" in output:
+            #     hessian = output["hessian"][i]  # Assuming hessian is per-molecule
+            # else:
+            #     # If no hessian available, skip frequency analysis for this molecule
+            #     continue
 
             # Perform frequency analysis
             frequency_analysis = analyze_frequencies_torch(
@@ -139,6 +163,57 @@ def evaluation(
         min_neg_freqs = 0.0
         transition_state_ratio = 0.0
 
+    # Compute and log energy and force-norm statistics
+    if energy_values:
+        energy_tensor = torch.stack(energy_values).float()
+        avg_energy = energy_tensor.mean().item()
+        min_energy = energy_tensor.min().item()
+        max_energy = energy_tensor.max().item()
+    else:
+        avg_energy = 0.0
+        min_energy = 0.0
+        max_energy = 0.0
+
+    if force_norm_values:
+        force_norm_tensor = torch.stack(force_norm_values).float()
+        avg_force_norm = force_norm_tensor.mean().item()
+        min_force_norm = force_norm_tensor.min().item()
+        max_force_norm = force_norm_tensor.max().item()
+    else:
+        avg_force_norm = 0.0
+        min_force_norm = 0.0
+        max_force_norm = 0.0
+
+    # Compute and log energy-gradient norm statistics
+    if energy_grad_norm_values:
+        energy_grad_norm_tensor = torch.stack(energy_grad_norm_values).float()
+        avg_energy_grad_norm = energy_grad_norm_tensor.mean().item()
+        min_energy_grad_norm = energy_grad_norm_tensor.min().item()
+        max_energy_grad_norm = energy_grad_norm_tensor.max().item()
+    else:
+        avg_energy_grad_norm = 0.0
+        min_energy_grad_norm = 0.0
+        max_energy_grad_norm = 0.0
+
+    # Aggregate eigvalprod if present
+    eigvalprod_present = len(eigvalprod_values) > 0
+    if eigvalprod_present:
+        eigvalprod_tensor = torch.stack(eigvalprod_values).float()
+        eigvalprod_avg = eigvalprod_tensor.mean().item()
+        eigvalprod_num_negative = (eigvalprod_tensor < 0).sum().item()
+
+    print(
+        f"Energy stats: avg={avg_energy:.6f}, min={min_energy:.6f}, max={max_energy:.6f}"
+    )
+    print(
+        f"Force-norm stats: avg={avg_force_norm:.6f}, min={min_force_norm:.6f}, max={max_force_norm:.6f}"
+    )
+    print(
+        f"Energy-gradient-norm stats: avg={avg_energy_grad_norm:.6f}, min={min_energy_grad_norm:.6f}, max={max_energy_grad_norm:.6f}"
+    )
+    if eigvalprod_present:
+        print(f"Eigvalprod: avg={eigvalprod_avg:.6f}, num_negative={int(eigvalprod_num_negative)}")
+
     conformer_outputs = None
     Im = get_dataset_fig(
         states[0], outputs[0]["energy"], cfg, outputs=conformer_outputs
@@ -152,12 +227,29 @@ def evaluation(
     return {
         "soc_loss": soc_loss,
         "energy_vis": Im,
-        "avg_neg_freqs": avg_neg_freqs,
-        "max_neg_freqs": max_neg_freqs,
-        "min_neg_freqs": min_neg_freqs,
+        # "avg_neg_freqs": avg_neg_freqs,
+        # "max_neg_freqs": max_neg_freqs,
+        # "min_neg_freqs": min_neg_freqs,
         "num_transition_states": num_transition_states,
         "num_minima": num_minima,
         "transition_state_ratio": transition_state_ratio,
-        "frequency_analyses": all_frequency_analyses,
+        # "frequency_analyses": all_frequency_analyses,
         "eval_time": time.time() - start_time,
+        "avg_energy": avg_energy,
+        "min_energy": min_energy,
+        "max_energy": max_energy,
+        "avg_force_norm": avg_force_norm,
+        "min_force_norm": min_force_norm,
+        "max_force_norm": max_force_norm,
+        "avg_energy_grad_norm": avg_energy_grad_norm,
+        "min_energy_grad_norm": min_energy_grad_norm,
+        "max_energy_grad_norm": max_energy_grad_norm,
+        **(
+            {
+                "eigvalprod_avg": eigvalprod_avg,
+                "eigvalprod_num_negative": int(eigvalprod_num_negative),
+            }
+            if eigvalprod_present
+            else {}
+        ),
     }

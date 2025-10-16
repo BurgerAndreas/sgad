@@ -151,4 +151,5 @@ class FairChemEnergy(torch.nn.Module):
             output_dict["reg_energy"] = torch.zeros_like(output_dict["energy"])
 
         output_dict["forces"] = (output_dict["forces"].detach()) / self.tau
+        output_dict["energy_grad"] = output_dict["forces"]
         return output_dict
