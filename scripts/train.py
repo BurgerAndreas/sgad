@@ -11,7 +11,7 @@ from pathlib import Path
 import sgad.utils.distributed_mode as distributed_mode
 import hydra
 import numpy as np
- 
+
 
 import pytorch_warmup as warmup
 import torch
@@ -74,7 +74,9 @@ def main(cfg):
                 energy_class = (
                     energy_target.split(".")[-1] if energy_target is not None else "run"
                 )
-                run_name = energy_class + ("-pretrain" if cfg.pretrain_epochs > 0 else "")
+                run_name = energy_class + (
+                    "-pretrain" if cfg.pretrain_epochs > 0 else ""
+                )
                 wandb.init(
                     project=getattr(cfg, "wandb_project", "sgad"),
                     name=run_name,
@@ -301,15 +303,20 @@ def main(cfg):
                         )
                         # Log validation metrics to Weights & Biases
                         try:
-                            log_payload = {
-                                f"eval/{k}": v for k, v in eval_dict.items()
-                            }
+                            log_payload = {f"eval/{k}": v for k, v in eval_dict.items()}
                             if cfg.use_wandb:
                                 wandb.log(log_payload, step=global_step)
                             # Optionally log visualization image
                             try:
                                 if cfg.use_wandb:
-                                    wandb.log({"eval/conformations_vis": wandb.Image("rdkit_vis.png")}, step=global_step)
+                                    wandb.log(
+                                        {
+                                            "eval/conformations_vis": wandb.Image(
+                                                "rdkit_vis.png"
+                                            )
+                                        },
+                                        step=global_step,
+                                    )
                                     wandb.log(
                                         {"eval/energy_vis": wandb.Image("test_im.png")},
                                         step=global_step,
@@ -318,7 +325,6 @@ def main(cfg):
                                 print(traceback.format_exc())
                         except Exception as e:  # noqa: F841
                             print(traceback.format_exc())
-                        print("saving checkpoint ... ")
                         if cfg.distributed:
                             state = {
                                 "controller_state_dict": controller.module.state_dict(),
@@ -333,7 +339,9 @@ def main(cfg):
                                 "epoch": epoch,
                                 "global_step": global_step,
                             }
-                        torch.save(state, "checkpoints/checkpoint_{}.pt".format(epoch))
+                        ckpt_fname = f"checkpoints/checkpoint_{epoch}.pt"
+                        torch.save(state, ckpt_fname)
+                        print(f"Saved checkpoint to {ckpt_fname}")
                         torch.save(state, "checkpoints/checkpoint_latest.pt")
                         pbar.set_description(
                             f"mode: {mode}, train loss: {train_dict['loss']:.2f}, eval soc loss: {eval_dict['soc_loss']:.2f}, minima: {eval_dict['num_minima']}, TS (idx-1): {eval_dict['num_transition_states']}"

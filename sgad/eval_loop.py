@@ -96,7 +96,7 @@ def evaluation(
         positions = graph_state["pos"]
         # atomic_nums = graph_state["node_attrs"].argmax(dim=-1)
         atomic_nums = graph_state["z"]
-        
+
         # Collect per-molecule energy and force-norm statistics
         forces = output["forces"]  # shape: (num_atoms_total, 3)
         energy_grad = output.get("energy_grad", None)  # optional, same shape as forces
@@ -203,16 +203,18 @@ def evaluation(
         eigvalprod_num_negative = (eigvalprod_tensor < 0).sum().item()
 
     print(
-        f"Energy stats: avg={avg_energy:.6f}, min={min_energy:.6f}, max={max_energy:.6f}"
+        f"Energy stats: avg={avg_energy:.1e}, min={min_energy:.1e}, max={max_energy:.1e}"
     )
     print(
-        f"Force-norm stats: avg={avg_force_norm:.6f}, min={min_force_norm:.6f}, max={max_force_norm:.6f}"
+        f"Force-norm stats: avg={avg_force_norm:.1e}, min={min_force_norm:.1e}, max={max_force_norm:.1e}"
     )
     print(
-        f"Energy-gradient-norm stats: avg={avg_energy_grad_norm:.6f}, min={min_energy_grad_norm:.6f}, max={max_energy_grad_norm:.6f}"
+        f"Energy-gradient-norm stats: avg={avg_energy_grad_norm:.1e}, min={min_energy_grad_norm:.1e}, max={max_energy_grad_norm:.1e}"
     )
     if eigvalprod_present:
-        print(f"Eigvalprod: avg={eigvalprod_avg:.6f}, num_negative={int(eigvalprod_num_negative)}")
+        print(
+            f"Eigvalprod: avg={eigvalprod_avg:.1e}, num_negative={int(eigvalprod_num_negative)}"
+        )
 
     conformer_outputs = None
     Im = get_dataset_fig(
