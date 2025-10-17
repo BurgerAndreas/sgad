@@ -102,8 +102,8 @@ def evaluation(
         energy_grad = output.get("energy_grad", None)  # optional, same shape as forces
         # Optionally collect eigvalprod if present (assumed scalar or 1D tensor)
         if "eigvalprod" in output:
-            evp = output["eigvalprod"].detach().cpu().float().reshape(-1)
-            eigvalprod_values.extend(evp)
+            evp = output["eigvalprod"].reshape(-1)
+            eigvalprod_values.extend(evp) # [B]
         for i in range(len(batch_ptr) - 1):
             start_idx = batch_ptr[i]
             end_idx = batch_ptr[i + 1]
@@ -124,14 +124,8 @@ def evaluation(
             mol_atomic_nums = atomic_nums[start_idx:end_idx]
 
             # Get hessian from energy model if available
-            hessian = output["hessian"][i]  # Assuming hessian is per-molecule
-            # if "hessian" in output:
-            #     hessian = output["hessian"][i]  # Assuming hessian is per-molecule
-            # else:
-            #     # If no hessian available, skip frequency analysis for this molecule
-            #     continue
+            hessian = output["hessian"][i]  # Assuming hessian is [B, N*3, N*3]
 
-            # Perform frequency analysis
             frequency_analysis = analyze_frequencies_torch(
                 hessian, mol_positions, mol_atomic_nums
             )

@@ -141,6 +141,7 @@ class HIPGADEnergy(torch.nn.Module):
         N = batch.natoms.max()
 
         hessian = out["hessian"].detach().reshape(B, 3 * N, 3 * N)
+        output_dict["hessian"] = hessian
 
         output_dict["energy"] = energy.detach()
 
@@ -156,6 +157,7 @@ class HIPGADEnergy(torch.nn.Module):
         gad = forces + 2 * dotprod * v  # [B, 3*N]
         output_dict["gad"] = gad.reshape(B * N, 3)
         output_dict["forces"] = forces.reshape(B * N, 3)
+        output_dict["eigvalprod"] = eigenvalues[:, 0] * eigenvalues[:, 1]  # [B]
 
         # Apply temperature scaling to forces
         output_dict["energy_grad"] = output_dict["gad"] / self.tau
