@@ -40,7 +40,7 @@ amortized: true
 # pretraining
 pretrain_epochs: 0
 # train with adjoint sampling, but populate buffer with T1x structures instead of random or SDE samples
-prefill_epochs: 1000
+prefill_epochs: 2000
 scale_bridgematching_loss: True
 # if to use only bridge matching for pretraining, or adjoint sampling + bridge matching
 BM_only_pretrain: True 
